@@ -10,7 +10,7 @@ local TweenService = game:GetService("TweenService")
 local Lighting     = game:GetService("Lighting")
 
 -- ⬇️ CAMBIA ESTO CUANDO SAQUES UPDATE
-local VERSION = "1.0"
+local VERSION = "1.1"
 
 -- ⬇️ URL DEL SCRIPT EN TU REPO
 local SCRIPT_URL = "https://raw.githubusercontent.com/eduardoelcrack/RATAHUB/refs/heads/main/RATAHUB_fluent.lua"
