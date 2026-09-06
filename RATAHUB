@@ -1,250 +1,2717 @@
--- ============================================================
---  RATAHUB KEY SYSTEM  |  by Bambi
--- ============================================================
+--[[
+	╔══════════════════════════════════════════════════════════════════════╗
+	║                           RATAHUB V5                                 ║
+	║                  Premium Roblox Utility Suite                        ║
+	║                                                                      ║
+	║   - Arquitectura Completa y Sin Recortes (Todos los 7 Tabs)          ║
+	║   - Dragging sin Saltos y Resize en 4 Esquinas sin Deriva            ║
+	║   - Separación de Capas (UI: 10, ESP/Tracers: 5, Overlay: 100)      ║
+	║   - Sistema de 3 Estados (Enabled, Active, Keybind)                  ║
+	║   - Whitelist Centralizada con Modos Independientes por Módulo       ║
+	║   - Sincronización Reversible Desacoplada (Anti-Recursión)          ║
+	║   - Aimlock Persistente con FOV en Screen-Space y Notificaciones     ║
+	║   - Tracers Rojo Puro Mutuamente Exclusivos detrás de la GUI         ║
+	║   - Click TP Puro (Sin Items) y BTools Separado (Delete Hammer)      ║
+	╚══════════════════════════════════════════════════════════════════════╝
+]]
 
-local existing = game.CoreGui:FindFirstChild("RataHubKeyUI")
-if existing then existing:Destroy() end
-
-local UIS          = game:GetService("UserInputService")
+-- Servicios Fundamentales de Roblox
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
 local TweenService = game:GetService("TweenService")
-local Lighting     = game:GetService("Lighting")
+local CoreGui = game:GetService("CoreGui")
+local Workspace = game:GetService("Workspace")
+local Lighting = game:GetService("Lighting")
+local TeleportService = game:GetService("TeleportService")
+local HttpService = game:GetService("HttpService")
+local SoundService = game:GetService("SoundService")
 
--- ⬇️ CAMBIA ESTO CUANDO SAQUES UPDATE
-local VERSION = "1.1"
+local LocalPlayer = Players.LocalPlayer
+local Camera = Workspace.CurrentCamera
+local Mouse = LocalPlayer:GetMouse()
 
--- ⬇️ URL DEL SCRIPT EN TU REPO
-local SCRIPT_URL = "https://raw.githubusercontent.com/eduardoelcrack/RATAHUB/refs/heads/main/RATAHUB_fluent.lua"
+-- Protección de Entorno
+local getgenv = getgenv or function() return _G end
+local syn = syn or nil
+local protectgui = (syn and syn.protect_gui) or function(gui) end
 
-local blur = Instance.new("BlurEffect")
-blur.Size   = 0
-blur.Parent = Lighting
-
-local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name           = "RataHubKeyUI"
-ScreenGui.ResetOnSpawn   = false
-ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-ScreenGui.Parent         = game.CoreGui
-
-local Frame = Instance.new("Frame", ScreenGui)
-Frame.Size             = UDim2.new(0, 0, 0, 0)
-Frame.Position         = UDim2.new(0.5, 0, 0.5, 0)
-Frame.AnchorPoint      = Vector2.new(0.5, 0.5)
-Frame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
-Frame.BorderSizePixel  = 0
-Instance.new("UICorner", Frame).CornerRadius = UDim.new(0, 12)
-
-local UIStroke     = Instance.new("UIStroke", Frame)
-UIStroke.Thickness = 2
-UIStroke.Color     = Color3.fromRGB(0, 255, 255)
-
-task.spawn(function()
-    while ScreenGui.Parent do
-        TweenService:Create(UIStroke, TweenInfo.new(1), {Color = Color3.fromRGB(255, 0, 255)}):Play()
-        task.wait(1)
-        TweenService:Create(UIStroke, TweenInfo.new(1), {Color = Color3.fromRGB(0, 255, 255)}):Play()
-        task.wait(1)
-    end
-end)
-
-local TopBar = Instance.new("Frame", Frame)
-TopBar.Size             = UDim2.new(1, 0, 0, 30)
-TopBar.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
-TopBar.BorderSizePixel  = 0
-Instance.new("UICorner", TopBar).CornerRadius = UDim.new(0, 12)
-
-local Title = Instance.new("TextLabel", TopBar)
-Title.Size                   = UDim2.new(1, -40, 1, 0)
-Title.Position               = UDim2.new(0, 10, 0, 0)
-Title.Text                   = "RATA HUB"
-Title.TextColor3             = Color3.new(1, 1, 1)
-Title.BackgroundTransparency = 1
-Title.TextXAlignment         = Enum.TextXAlignment.Left
-Title.Font                   = Enum.Font.GothamBold
-Title.TextSize               = 14
-
-local gradient = Instance.new("UIGradient", Title)
-gradient.Color = ColorSequence.new{
-    ColorSequenceKeypoint.new(0, Color3.fromRGB(0, 255, 255)),
-    ColorSequenceKeypoint.new(1, Color3.fromRGB(255, 0, 255))
+--------------------------------------------------------------------------------
+-- 1. CONFIGURACIÓN GLOBAL Y ESTRUCTURA DE DATOS
+--------------------------------------------------------------------------------
+local Config = {
+	Main = {
+		Movement = {
+			WalkSpeed = 16,
+			WalkSpeedKey = Enum.KeyCode.V,
+			WalkSpeedActive = false,
+			JumpPower = 50,
+			Gravity = 196.2,
+			FlyEnabled = false,
+			FlyActive = false,
+			FlySpeed = 50,
+			FlyKey = Enum.KeyCode.X,
+			NoclipEnabled = false,
+			NoclipActive = false,
+			NoclipKey = Enum.KeyCode.N,
+			InfiniteJumpEnabled = false,
+			InfiniteJumpActive = false,
+			InfiniteJumpKey = Enum.KeyCode.J,
+		},
+		Player = {
+			HitboxEnabled = false,
+			HitboxSize = 10,
+			HitboxTransparency = 0.6,
+			HitboxPart = "Head",
+			HitboxTeamCheck = false,
+			HitboxFriendCheck = false,
+			HitboxWhitelistMode = "Disabled", -- "Disabled", "Ignore Whitelist", "Only Whitelist"
+			HitboxSyncWithESP = false,
+			HitboxSyncWithAimlock = false,
+			HitboxSyncWithTriggerbot = false,
+		},
+		Utility = {
+			AntiAFK = false,
+			TargetServerPlayerCount = 1,
+		}
+	},
+	ESP = {
+		Enabled = false,
+		Boxes = false,
+		Names = false,
+		Tracers = false,
+		Distance = false,
+		TeamCheck = false,
+		FriendCheck = false,
+		MaxDistance = 1000,
+		WhitelistMode = "Disabled",
+		SyncWithAimlock = false,
+		SyncWithTriggerbot = false,
+		SyncWithHitbox = false,
+	},
+	Aimlock = {
+		Enabled = false,
+		Active = false,
+		Target = nil,
+		AimPart = "Head", -- "Head", "Torso", "Auto"
+		Smoothness = 0.2,
+		UseFOV = false,
+		FOVSize = 150,
+		MaxDistance = 500,
+		AimlockKey = Enum.KeyCode.E,
+		Tracers = false,
+		TeamCheck = false,
+		FriendCheck = false,
+		WhitelistMode = "Disabled",
+		SyncWithESP = false,
+		SyncWithTriggerbot = false,
+		SyncWithHitbox = false,
+	},
+	Triggerbot = {
+		Enabled = false,
+		Delay = 50, -- ms
+		TeamCheck = false,
+		FriendCheck = false,
+		WhitelistMode = "Disabled",
+		SyncWithESP = false,
+		SyncWithAimlock = false,
+		SyncWithHitbox = false,
+	},
+	Extras = {
+		Camera = {
+			UnlockMaxDistance = false,
+			FOVChanger = false,
+			FOVValue = 70,
+			Freecam = false,
+			FreecamSpeed = 10,
+		},
+		Vision = {
+			XRay = false,
+		},
+		Tools = {
+			ClickTP = false,
+		},
+		Performance = {
+			FPSBoost = false,
+			AntiFling = false,
+		}
+	},
+	Troll = {
+		Fling = false,
+		Invisible = false,
+	},
+	Sounds = {
+		LockSound = true,
+		HitSound = true,
+		SelectedSound = "Ping",
+		SoundList = {
+			["None"] = 0,
+			["Ping"] = 4590662766,
+			["Laser"] = 341111003,
+			["Beep"] = 9114223171,
+			["Hit"] = 142294714,
+			["Bell"] = 6534947240,
+			["Bonk"] = 3997129944,
+		}
+	}
 }
 
-task.spawn(function()
-    while ScreenGui.Parent do
-        gradient.Rotation += 2
-        task.wait(0.03)
-    end
+-- Matriz Central de Whitelist (Nombres de Jugadores como Hash Map)
+local GlobalWhitelistTable = {}
+
+-- Guardias de Estado Interno
+local isSyncUpdate = false
+local originalHitboxSizes = {}
+local activeESPDrawings = {}
+local originalLightingSettings = {}
+local freecamCFrame = nil
+local freecamConnection = nil
+
+--------------------------------------------------------------------------------
+-- 2. SISTEMA DE WHITELIST Y FILTRADO SIMÉTRICO
+--------------------------------------------------------------------------------
+local function IsFriend(player)
+	if not player or player == LocalPlayer then return false end
+	local success, result = pcall(function()
+		return LocalPlayer:IsFriendsWith(player.UserId)
+	end)
+	return success and result or false
+end
+
+local function ShouldTargetPlayer(player, moduleMode, teamCheck, friendCheck)
+	if not player or player == LocalPlayer or not player.Character then 
+		return false 
+	end
+
+	local character = player.Character
+	local humanoid = character:FindFirstChildOfClass("Humanoid")
+	if not humanoid or humanoid.Health <= 0 then 
+		return false 
+	end
+
+	-- Comprobación de Equipos (Manejo Seguro de nil)
+	if teamCheck and LocalPlayer.Team and player.Team and LocalPlayer.Team == player.Team then
+		return false
+	end
+
+	-- Comprobación de Amigos
+	if friendCheck and IsFriend(player) then
+		return false
+	end
+
+	-- Comprobación de Whitelist Simétrica
+	local inWhitelist = (GlobalWhitelistTable[player.Name] == true)
+	local mode = moduleMode or "Disabled"
+
+	if mode == "Ignore Whitelist" then
+		return not inWhitelist
+	elseif mode == "Only Whitelist" then
+		return inWhitelist
+	end
+
+	return true -- "Disabled" permite a todos
+end
+
+--------------------------------------------------------------------------------
+-- 3. CAPAS VISUALES Y RENDER LAYER (DisplayOrder Desacoplado)
+--------------------------------------------------------------------------------
+local parentContainer = CoreGui:FindFirstChild("RobloxGui") or CoreGui or LocalPlayer:WaitForChild("PlayerGui")
+
+-- Capa 1: Capa de Renderizado Mundial (ESP, Tracers, Círculo FOV) -> Detrás de la UI
+local espGui = Instance.new("ScreenGui")
+espGui.Name = "RataHubV5_RenderLayer"
+espGui.DisplayOrder = 5
+espGui.ResetOnSpawn = false
+espGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+protectgui(espGui)
+espGui.Parent = parentContainer
+
+-- Capa 2: Interfaz de Usuario Principal (Ventana, Tabs, Controles, Footer)
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "RataHubV5_UI"
+screenGui.DisplayOrder = 10
+screenGui.ResetOnSpawn = false
+screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+protectgui(screenGui)
+screenGui.Parent = parentContainer
+
+-- Capa 3: Capa Flotante de Menús Desplegables (Overlay Portal)
+local overlayGui = Instance.new("ScreenGui")
+overlayGui.Name = "RataHubV5_Overlay"
+overlayGui.DisplayOrder = 100
+overlayGui.ResetOnSpawn = false
+overlayGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+protectgui(overlayGui)
+overlayGui.Parent = parentContainer
+
+-- Círculo FOV Visual (En Capa 5, detrás de la UI)
+local fovCircle = Instance.new("Frame")
+fovCircle.Name = "FOVCircle"
+fovCircle.BackgroundTransparency = 1
+fovCircle.AnchorPoint = Vector2.new(0.5, 0.5)
+fovCircle.Visible = false
+fovCircle.Parent = espGui
+
+local fovStroke = Instance.new("UIStroke")
+fovStroke.Color = Color3.fromRGB(255, 255, 255)
+fovStroke.Transparency = 0.35
+fovStroke.Thickness = 1.5
+fovStroke.Parent = fovCircle
+
+local fovCorner = Instance.new("UICorner")
+fovCorner.CornerRadius = UDim.new(1, 0)
+fovCorner.Parent = fovCircle
+
+-- Sistema de Notificaciones Toast
+local notificationContainer = Instance.new("Frame")
+notificationContainer.Name = "NotificationContainer"
+notificationContainer.Size = UDim2.new(0, 320, 1, -40)
+notificationContainer.Position = UDim2.new(1, -340, 0, 20)
+notificationContainer.BackgroundTransparency = 1
+notificationContainer.Parent = screenGui
+
+local notifLayout = Instance.new("UIListLayout")
+notifLayout.SortOrder = Enum.SortOrder.LayoutOrder
+notifLayout.VerticalAlignment = Enum.VerticalAlignment.Bottom
+notifLayout.Padding = UDim.new(0, 8)
+notifLayout.Parent = notificationContainer
+
+local function PlayAudio(soundId)
+	if soundId and soundId ~= 0 then
+		local sound = Instance.new("Sound")
+		sound.SoundId = "rbxassetid://" .. tostring(soundId)
+		sound.Volume = 1
+		sound.Parent = SoundService
+		sound:Play()
+		sound.Ended:Connect(function()
+			sound:Destroy()
+		end)
+	end
+end
+
+local function Notify(title, message, duration)
+	duration = duration or 3.5
+	local card = Instance.new("Frame")
+	card.Size = UDim2.new(1, 0, 0, 64)
+	card.BackgroundColor3 = Color3.fromRGB(18, 18, 24)
+	card.BackgroundTransparency = 0.05
+	card.BorderSizePixel = 0
+
+	local corner = Instance.new("UICorner")
+	corner.CornerRadius = UDim.new(0, 8)
+	corner.Parent = card
+
+	local stroke = Instance.new("UIStroke")
+	stroke.Color = Color3.fromRGB(45, 45, 60)
+	stroke.Thickness = 1.2
+	stroke.Parent = card
+
+	local accent = Instance.new("Frame")
+	accent.Size = UDim2.new(0, 4, 1, -16)
+	accent.Position = UDim2.new(0, 8, 0, 8)
+	accent.BackgroundColor3 = Color3.fromRGB(120, 75, 220)
+	accent.BorderSizePixel = 0
+	accent.Parent = card
+
+	local accentCorner = Instance.new("UICorner")
+	accentCorner.CornerRadius = UDim.new(1, 0)
+	accentCorner.Parent = accent
+
+	local titleLabel = Instance.new("TextLabel")
+	titleLabel.Text = title
+	titleLabel.TextColor3 = Color3.fromRGB(245, 245, 255)
+	titleLabel.TextSize = 13
+	titleLabel.Font = Enum.Font.GothamBold
+	titleLabel.TextXAlignment = Enum.TextXAlignment.Left
+	titleLabel.Position = UDim2.new(0, 20, 0, 10)
+	titleLabel.Size = UDim2.new(1, -30, 0, 16)
+	titleLabel.BackgroundTransparency = 1
+	titleLabel.Parent = card
+
+	local descLabel = Instance.new("TextLabel")
+	descLabel.Text = message
+	descLabel.TextColor3 = Color3.fromRGB(170, 170, 190)
+	descLabel.TextSize = 11
+	descLabel.Font = Enum.Font.Gotham
+	descLabel.TextXAlignment = Enum.TextXAlignment.Left
+	descLabel.Position = UDim2.new(0, 20, 0, 28)
+	descLabel.Size = UDim2.new(1, -30, 0, 28)
+	descLabel.BackgroundTransparency = 1
+	descLabel.TextWrapped = true
+	descLabel.Parent = card
+
+	card.Parent = notificationContainer
+	card.Position = UDim2.new(1, 60, 0, 0)
+	TweenService:Create(card, TweenInfo.new(0.35, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {Position = UDim2.new(0, 0, 0, 0)}):Play()
+
+	task.delay(duration, function()
+		if card and card.Parent then
+			local closeTween = TweenService:Create(card, TweenInfo.new(0.3, Enum.EasingStyle.Quart, Enum.EasingDirection.In), {Position = UDim2.new(1, 60, 0, 0), BackgroundTransparency = 1})
+			closeTween:Play()
+			closeTween.Completed:Connect(function()
+				card:Destroy()
+			end)
+		end
+	end)
+end
+
+--------------------------------------------------------------------------------
+-- 4. MATRIZ DE SINCRONIZACIÓN REVERSIBLE (Zero-Loop / True Disconnect)
+--------------------------------------------------------------------------------
+local SyncMatrix = {}
+local UI_Controllers = {}
+
+function SyncMatrix.Propagate(sourceName, propertyName, value)
+	if isSyncUpdate then return end
+	isSyncUpdate = true
+
+	local syncMap = {
+		ESP = {
+			Aimlock = Config.ESP.SyncWithAimlock,
+			Triggerbot = Config.ESP.SyncWithTriggerbot,
+			Hitbox = Config.ESP.SyncWithHitbox
+		},
+		Aimlock = {
+			ESP = Config.Aimlock.SyncWithESP,
+			Triggerbot = Config.Aimlock.SyncWithTriggerbot,
+			Hitbox = Config.Aimlock.SyncWithHitbox
+		},
+		Triggerbot = {
+			ESP = Config.Triggerbot.SyncWithESP,
+			Aimlock = Config.Triggerbot.SyncWithAimlock,
+			Hitbox = Config.Triggerbot.SyncWithHitbox
+		},
+		Hitbox = {
+			ESP = Config.Main.Player.HitboxSyncWithESP,
+			Aimlock = Config.Main.Player.HitboxSyncWithAimlock,
+			Triggerbot = Config.Main.Player.HitboxSyncWithTriggerbot
+		}
+	}
+
+	local activeLinks = syncMap[sourceName]
+	if activeLinks then
+		for targetModule, isLinked in pairs(activeLinks) do
+			if isLinked then
+				if propertyName == "WhitelistMode" then
+					if targetModule == "ESP" then
+						Config.ESP.WhitelistMode = value
+						if UI_Controllers.ESP and UI_Controllers.ESP.SetWhitelistMode then UI_Controllers.ESP.SetWhitelistMode(value) end
+					elseif targetModule == "Aimlock" then
+						Config.Aimlock.WhitelistMode = value
+						if UI_Controllers.Aimlock and UI_Controllers.Aimlock.SetWhitelistMode then UI_Controllers.Aimlock.SetWhitelistMode(value) end
+					elseif targetModule == "Triggerbot" then
+						Config.Triggerbot.WhitelistMode = value
+						if UI_Controllers.Triggerbot and UI_Controllers.Triggerbot.SetWhitelistMode then UI_Controllers.Triggerbot.SetWhitelistMode(value) end
+					elseif targetModule == "Hitbox" then
+						Config.Main.Player.HitboxWhitelistMode = value
+						if UI_Controllers.Hitbox and UI_Controllers.Hitbox.SetWhitelistMode then UI_Controllers.Hitbox.SetWhitelistMode(value) end
+					end
+				end
+			end
+		end
+	end
+
+	isSyncUpdate = false
+end
+
+--------------------------------------------------------------------------------
+-- 5. MOVIMIENTO, FLY, NOCLIP, SALTO INFINITO Y EXTRAS
+--------------------------------------------------------------------------------
+local flyBodyGyro = nil
+local flyBodyVelocity = nil
+
+local function StopFly()
+	Config.Main.Movement.FlyActive = false
+	if flyBodyGyro then flyBodyGyro:Destroy() flyBodyGyro = nil end
+	if flyBodyVelocity then flyBodyVelocity:Destroy() flyBodyVelocity = nil end
+	local char = LocalPlayer.Character
+	if char then
+		local hum = char:FindFirstChildOfClass("Humanoid")
+		if hum then hum.PlatformStand = false end
+	end
+end
+
+local function StartFly()
+	local char = LocalPlayer.Character
+	if not char then return end
+	local root = char:FindFirstChild("HumanoidRootPart")
+	local hum = char:FindFirstChildOfClass("Humanoid")
+	if not root or not hum then return end
+
+	StopFly()
+	Config.Main.Movement.FlyActive = true
+	hum.PlatformStand = true
+
+	flyBodyGyro = Instance.new("BodyGyro")
+	flyBodyGyro.P = 9e4
+	flyBodyGyro.MaxTorque = Vector3.new(9e9, 9e9, 9e9)
+	flyBodyGyro.CFrame = root.CFrame
+	flyBodyGyro.Parent = root
+
+	flyBodyVelocity = Instance.new("BodyVelocity")
+	flyBodyVelocity.Velocity = Vector3.zero
+	flyBodyVelocity.MaxForce = Vector3.new(9e9, 9e9, 9e9)
+	flyBodyVelocity.Parent = root
+end
+
+-- BTools Oficial (Exclusivamente Delete Hammer)
+local function GiveBTools()
+	local backpack = LocalPlayer:FindFirstChildOfClass("Backpack")
+	if backpack then
+		for _, tool in ipairs(backpack:GetChildren()) do
+			if tool:IsA("HopperBin") and tool.BinType == Enum.BinType.Hammer then
+				tool:Destroy()
+			end
+		end
+		local hammer = Instance.new("HopperBin")
+		hammer.BinType = Enum.BinType.Hammer
+		hammer.Name = "Delete"
+		hammer.Parent = backpack
+		Notify("BTools", "Herramienta Delete entregada exitosamente.", 3)
+	end
+end
+
+-- Anti-AFK
+local function SetupAntiAFK()
+	LocalPlayer.Idled:Connect(function()
+		if Config.Main.Utility.AntiAFK then
+			local virtualUser = game:GetService("VirtualUser")
+			virtualUser:Button2Down(Vector2.new(0, 0), Workspace.CurrentCamera.CFrame)
+			task.wait(1)
+			virtualUser:Button2Up(Vector2.new(0, 0), Workspace.CurrentCamera.CFrame)
+		end
+	end)
+end
+SetupAntiAFK()
+
+-- Servidor Rejoin
+local function RejoinServer()
+	TeleportService:TeleportToPlaceInstance(game.PlaceId, game.JobId, LocalPlayer)
+end
+
+-- Servidor por Cantidad de Jugadores
+local function JoinServerWithPlayerCount(targetCount)
+	local serversUrl = "https://games.roblox.com/v1/games/" .. tostring(game.PlaceId) .. "/servers/Public?sortOrder=Asc&limit=100"
+	local success, response = pcall(function()
+		return HttpService:JSONDecode(game:HttpGet(serversUrl))
+	end)
+
+	if success and response and response.data then
+		for _, server in ipairs(response.data) do
+			if server.playing == targetCount and server.id ~= game.JobId then
+				Notify("Servidor", "Conectando a servidor con " .. targetCount .. " jugadores...", 3)
+				TeleportService:TeleportToPlaceInstance(game.PlaceId, server.id, LocalPlayer)
+				return
+			end
+		end
+		Notify("Servidor", "No se encontró ningún servidor con exactamente " .. targetCount .. " jugadores.", 3)
+	else
+		Notify("Servidor", "Error al consultar la lista de servidores.", 3)
+	end
+end
+
+--------------------------------------------------------------------------------
+-- 6. GESTIÓN DE INPUTS Y 3 ESTADOS (Master Toggle + Active + Keybind)
+--------------------------------------------------------------------------------
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+	if gameProcessed then return end
+
+	-- Click TP (Evento puro de teleportación por CFrame)
+	if Config.Extras.Tools.ClickTP and input.UserInputType == Enum.UserInputType.MouseButton1 then
+		if UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) or UserInputService:IsKeyDown(Enum.KeyCode.RightControl) or Config.Extras.Tools.ClickTP then
+			local hitPos = Mouse.Hit and Mouse.Hit.Position
+			local char = LocalPlayer.Character
+			local root = char and char:FindFirstChild("HumanoidRootPart")
+			if hitPos and root then
+				root.CFrame = CFrame.new(hitPos + Vector3.new(0, 3, 0))
+				Notify("Click TP", "Teletransportado exitosamente.", 1.5)
+			end
+		end
+	end
+
+	-- Keybind Fly
+	if input.KeyCode == Config.Main.Movement.FlyKey then
+		if Config.Main.Movement.FlyEnabled then
+			if Config.Main.Movement.FlyActive then
+				StopFly()
+				Notify("Fly", "Vuelo Desactivado.", 1.5)
+			else
+				StartFly()
+				Notify("Fly", "Vuelo Activado.", 1.5)
+			end
+		end
+	end
+
+	-- Keybind No Clip
+	if input.KeyCode == Config.Main.Movement.NoclipKey then
+		if Config.Main.Movement.NoclipEnabled then
+			Config.Main.Movement.NoclipActive = not Config.Main.Movement.NoclipActive
+			Notify("No Clip", Config.Main.Movement.NoclipActive and "No Clip Activado." or "No Clip Desactivado.", 1.5)
+		end
+	end
+
+	-- Keybind Salto Infinito
+	if input.KeyCode == Config.Main.Movement.InfiniteJumpKey then
+		if Config.Main.Movement.InfiniteJumpEnabled then
+			Config.Main.Movement.InfiniteJumpActive = not Config.Main.Movement.InfiniteJumpActive
+			Notify("Infinite Jump", Config.Main.Movement.InfiniteJumpActive and "Salto Infinito Activado." or "Salto Infinito Desactivado.", 1.5)
+		end
+	end
+
+	-- Keybind WalkSpeed
+	if input.KeyCode == Config.Main.Movement.WalkSpeedKey then
+		Config.Main.Movement.WalkSpeedActive = not Config.Main.Movement.WalkSpeedActive
+		local char = LocalPlayer.Character
+		local hum = char and char:FindFirstChildOfClass("Humanoid")
+		if hum then
+			hum.WalkSpeed = Config.Main.Movement.WalkSpeedActive and Config.Main.Movement.WalkSpeed or 16
+		end
+		Notify("WalkSpeed", Config.Main.Movement.WalkSpeedActive and ("Velocidad (" .. Config.Main.Movement.WalkSpeed .. ") Activada.") or "Velocidad Normal.", 1.5)
+	end
+
+	-- Keybind Aimlock (Persistente + 3 Estados + Screen Space FOV)
+	if input.KeyCode == Config.Aimlock.AimlockKey then
+		if Config.Aimlock.Enabled then
+			if Config.Aimlock.Active then
+				Config.Aimlock.Active = false
+				Config.Aimlock.Target = nil
+				Notify("Aimlock", "Objetivo liberado.", 1.5)
+			else
+				-- Búsqueda de objetivo óptimo en Screen Space
+				local bestTarget = nil
+				local shortestDist = math.huge
+				local mousePos = UserInputService:GetMouseLocation()
+
+				for _, player in ipairs(Players:GetPlayers()) do
+					if ShouldTargetPlayer(player, Config.Aimlock.WhitelistMode, Config.Aimlock.TeamCheck, Config.Aimlock.FriendCheck) then
+						local char = player.Character
+						local part = char and (
+							Config.Aimlock.AimPart == "Head" and char:FindFirstChild("Head") or
+							Config.Aimlock.AimPart == "Torso" and (char:FindFirstChild("Torso") or char:FindFirstChild("UpperTorso")) or
+							char:FindFirstChild("Head") or char:FindFirstChild("HumanoidRootPart")
+						)
+
+						if part then
+							local screenPos, onScreen = Camera:WorldToViewportPoint(part.Position)
+							if onScreen then
+								local dist2D = (Vector2.new(screenPos.X, screenPos.Y) - mousePos).Magnitude
+								local dist3D = (part.Position - Camera.CFrame.Position).Magnitude
+
+								if dist3D <= Config.Aimlock.MaxDistance then
+									if not Config.Aimlock.UseFOV or dist2D <= Config.Aimlock.FOVSize then
+										if dist2D < shortestDist then
+											shortestDist = dist2D
+											bestTarget = player
+										end
+									end
+								end
+							end
+						end
+					end
+				end
+
+				if bestTarget then
+					Config.Aimlock.Active = true
+					Config.Aimlock.Target = bestTarget
+					if Config.Sounds.LockSound then
+						PlayAudio(Config.Sounds.SoundList[Config.Sounds.SelectedSound])
+					end
+					Notify("Aimlock", "Lockeaste a " .. bestTarget.Name, 2.5)
+				else
+					Notify("Aimlock", "No se encontró ningún objetivo válido.", 2)
+				end
+			end
+		end
+	end
 end)
 
-local Close = Instance.new("TextButton", TopBar)
-Close.Size             = UDim2.new(0, 30, 1, 0)
-Close.Position         = UDim2.new(1, -30, 0, 0)
-Close.Text             = "X"
-Close.BackgroundColor3 = Color3.fromRGB(150, 0, 0)
-Close.TextColor3       = Color3.new(1, 1, 1)
-Close.Font             = Enum.Font.GothamBold
-Close.TextSize         = 13
-Close.BorderSizePixel  = 0
-Instance.new("UICorner", Close).CornerRadius = UDim.new(0, 6)
-
-Close.MouseEnter:Connect(function()
-    TweenService:Create(Close, TweenInfo.new(0.15), {BackgroundColor3 = Color3.fromRGB(255, 0, 0)}):Play()
-end)
-Close.MouseLeave:Connect(function()
-    TweenService:Create(Close, TweenInfo.new(0.15), {BackgroundColor3 = Color3.fromRGB(150, 0, 0)}):Play()
-end)
-Close.MouseButton1Click:Connect(function()
-    TweenService:Create(Frame, TweenInfo.new(0.3), {Size = UDim2.new(0, 0, 0, 0)}):Play()
-    TweenService:Create(blur,  TweenInfo.new(0.3), {Size = 0}):Play()
-    task.wait(0.3)
-    ScreenGui:Destroy()
-    blur:Destroy()
+-- Listener Salto Infinito
+UserInputService.JumpRequest:Connect(function()
+	if Config.Main.Movement.InfiniteJumpEnabled and Config.Main.Movement.InfiniteJumpActive then
+		local char = LocalPlayer.Character
+		local hum = char and char:FindFirstChildOfClass("Humanoid")
+		if hum then
+			hum:ChangeState(Enum.HumanoidStateType.Jumping)
+		end
+	end
 end)
 
-local TextBox = Instance.new("TextBox", Frame)
-TextBox.Size                = UDim2.new(0.8, 0, 0, 40)
-TextBox.Position            = UDim2.new(0.1, 0, 0.38, 0)
-TextBox.PlaceholderText     = "Enter Key..."
-TextBox.BackgroundColor3    = Color3.fromRGB(35, 35, 35)
-TextBox.TextColor3          = Color3.new(1, 1, 1)
-TextBox.PlaceholderColor3   = Color3.fromRGB(130, 130, 130)
-TextBox.Font                = Enum.Font.Gotham
-TextBox.TextSize            = 13
-TextBox.BorderSizePixel     = 0
-TextBox.ClearTextOnFocus    = false
-Instance.new("UICorner", TextBox).CornerRadius = UDim.new(0, 8)
+--------------------------------------------------------------------------------
+-- 7. HITBOX EXPANDER (Respeto estricto a Whitelist y Limpieza Dinámica)
+--------------------------------------------------------------------------------
+local function CleanHitboxes()
+	for part, originalSize in pairs(originalHitboxSizes) do
+		if part and part.Parent then
+			part.Size = originalSize
+			part.Transparency = 0
+		end
+	end
+	table.clear(originalHitboxSizes)
+end
 
-local Button = Instance.new("TextButton", Frame)
-Button.Size             = UDim2.new(0.8, 0, 0, 40)
-Button.Position         = UDim2.new(0.1, 0, 0.68, 0)
-Button.Text             = "Check Key"
-Button.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-Button.TextColor3       = Color3.new(1, 1, 1)
-Button.Font             = Enum.Font.GothamBold
-Button.TextSize         = 13
-Button.BorderSizePixel  = 0
-Instance.new("UICorner", Button).CornerRadius = UDim.new(0, 8)
+local function UpdateHitboxes()
+	if not Config.Main.Player.HitboxEnabled then
+		CleanHitboxes()
+		return
+	end
 
-Button.MouseEnter:Connect(function()
-    TweenService:Create(Button, TweenInfo.new(0.2), {BackgroundColor3 = Color3.fromRGB(70, 70, 70)}):Play()
+	for _, player in ipairs(Players:GetPlayers()) do
+		if player ~= LocalPlayer and player.Character then
+			local char = player.Character
+			local targetPart = char:FindFirstChild(Config.Main.Player.HitboxPart) or char:FindFirstChild("Head")
+
+			if ShouldTargetPlayer(player, Config.Main.Player.HitboxWhitelistMode, Config.Main.Player.HitboxTeamCheck, Config.Main.Player.HitboxFriendCheck) then
+				if targetPart and targetPart:IsA("BasePart") then
+					if not originalHitboxSizes[targetPart] then
+						originalHitboxSizes[targetPart] = targetPart.Size
+					end
+					targetPart.Size = Vector3.new(Config.Main.Player.HitboxSize, Config.Main.Player.HitboxSize, Config.Main.Player.HitboxSize)
+					targetPart.Transparency = Config.Main.Player.HitboxTransparency
+					targetPart.CanCollide = false
+				end
+			else
+				if targetPart and originalHitboxSizes[targetPart] then
+					targetPart.Size = originalHitboxSizes[targetPart]
+					targetPart.Transparency = 0
+					originalHitboxSizes[targetPart] = nil
+				end
+			end
+		end
+	end
+end
+
+--------------------------------------------------------------------------------
+-- 8. SISTEMA VISUAL ESP (Boxes, Nombres, Distancia y Colores por Amigo)
+--------------------------------------------------------------------------------
+local function CreateESPForPlayer(player)
+	if activeESPDrawings[player] then return end
+
+	local box = Drawing and Drawing.new and Drawing.new("Square") or nil
+	local nameText = Drawing and Drawing.new and Drawing.new("Text") or nil
+	local distText = Drawing and Drawing.new and Drawing.new("Text") or nil
+
+	if box then
+		box.Visible = false
+		box.Color = Color3.fromRGB(160, 80, 240) -- Morado Original
+		box.Thickness = 1.5
+		box.Filled = false
+	end
+
+	if nameText then
+		nameText.Visible = false
+		nameText.Color = Color3.fromRGB(200, 140, 255)
+		nameText.Size = 13
+		nameText.Center = true
+		nameText.Outline = true
+	end
+
+	if distText then
+		distText.Visible = false
+		distText.Color = Color3.fromRGB(220, 220, 230)
+		distText.Size = 11
+		distText.Center = true
+		distText.Outline = true
+	end
+
+	activeESPDrawings[player] = {
+		Box = box,
+		NameText = nameText,
+		DistText = distText,
+	}
+end
+
+local function RemoveESPForPlayer(player)
+	local drawings = activeESPDrawings[player]
+	if drawings then
+		if drawings.Box then drawings.Box:Remove() end
+		if drawings.NameText then drawings.NameText:Remove() end
+		if drawings.DistText then drawings.DistText:Remove() end
+		activeESPDrawings[player] = nil
+	end
+end
+
+for _, p in ipairs(Players:GetPlayers()) do
+	if p ~= LocalPlayer then CreateESPForPlayer(p) end
+end
+Players.PlayerAdded:Connect(CreateESPForPlayer)
+Players.PlayerRemoving:Connect(RemoveESPForPlayer)
+
+--------------------------------------------------------------------------------
+-- 9. RENDERSTEPPED CENTRALIZADO (Render, Lock, Tracers, FOV & Limpieza)
+--------------------------------------------------------------------------------
+local tracerLine = Drawing and Drawing.new and Drawing.new("Line") or nil
+if tracerLine then
+	tracerLine.Visible = false
+	tracerLine.Color = Color3.fromRGB(255, 0, 0) -- Rojo Puro
+	tracerLine.Thickness = 1.5
+	tracerLine.Transparency = 1
+end
+
+RunService.RenderStepped:Connect(function(deltaTime)
+	local mousePos = UserInputService:GetMouseLocation()
+	local screenCenter = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y)
+
+	-- 1. FOV Visual Circle
+	if Config.Aimlock.Enabled and Config.Aimlock.UseFOV then
+		fovCircle.Position = UDim2.new(0, mousePos.X, 0, mousePos.Y)
+		fovCircle.Size = UDim2.new(0, Config.Aimlock.FOVSize * 2, 0, Config.Aimlock.FOVSize * 2)
+		fovCircle.Visible = true
+	else
+		fovCircle.Visible = false
+	end
+
+	-- 2. Fly Físico
+	if Config.Main.Movement.FlyEnabled and Config.Main.Movement.FlyActive and flyBodyVelocity and flyBodyGyro then
+		local char = LocalPlayer.Character
+		local root = char and char:FindFirstChild("HumanoidRootPart")
+		if root then
+			flyBodyGyro.CFrame = Camera.CFrame
+			local velocity = Vector3.zero
+			if UserInputService:IsKeyDown(Enum.KeyCode.W) then velocity = velocity + (Camera.CFrame.LookVector * Config.Main.Movement.FlySpeed) end
+			if UserInputService:IsKeyDown(Enum.KeyCode.S) then velocity = velocity - (Camera.CFrame.LookVector * Config.Main.Movement.FlySpeed) end
+			if UserInputService:IsKeyDown(Enum.KeyCode.A) then velocity = velocity - (Camera.CFrame.RightVector * Config.Main.Movement.FlySpeed) end
+			if UserInputService:IsKeyDown(Enum.KeyCode.D) then velocity = velocity + (Camera.CFrame.RightVector * Config.Main.Movement.FlySpeed) end
+			if UserInputService:IsKeyDown(Enum.KeyCode.Space) then velocity = velocity + Vector3.new(0, Config.Main.Movement.FlySpeed, 0) end
+			if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then velocity = velocity - Vector3.new(0, Config.Main.Movement.FlySpeed, 0) end
+			flyBodyVelocity.Velocity = velocity
+		end
+	end
+
+	-- 3. No Clip Físico
+	if Config.Main.Movement.NoclipEnabled and Config.Main.Movement.NoclipActive then
+		local char = LocalPlayer.Character
+		if char then
+			for _, part in ipairs(char:GetDescendants()) do
+				if part:IsA("BasePart") and part.CanCollide then
+					part.CanCollide = false
+				end
+			end
+		end
+	end
+
+	-- 4. Freecam Físico
+	if Config.Extras.Camera.Freecam and freecamCFrame then
+		local moveSpeed = Config.Extras.Camera.FreecamSpeed * 0.5
+		local deltaPos = Vector3.zero
+		if UserInputService:IsKeyDown(Enum.KeyCode.W) then deltaPos = deltaPos + (freecamCFrame.LookVector * moveSpeed) end
+		if UserInputService:IsKeyDown(Enum.KeyCode.S) then deltaPos = deltaPos - (freecamCFrame.LookVector * moveSpeed) end
+		if UserInputService:IsKeyDown(Enum.KeyCode.A) then deltaPos = deltaPos - (freecamCFrame.RightVector * moveSpeed) end
+		if UserInputService:IsKeyDown(Enum.KeyCode.D) then deltaPos = deltaPos + (freecamCFrame.RightVector * moveSpeed) end
+		if UserInputService:IsKeyDown(Enum.KeyCode.E) then deltaPos = deltaPos + Vector3.new(0, moveSpeed, 0) end
+		if UserInputService:IsKeyDown(Enum.KeyCode.Q) then deltaPos = deltaPos - Vector3.new(0, moveSpeed, 0) end
+		freecamCFrame = freecamCFrame + deltaPos
+		Camera.CFrame = freecamCFrame
+	end
+
+	-- 5. Aimlock Camera Interpolation & Desconexión/Muerte
+	if Config.Aimlock.Enabled and Config.Aimlock.Active and Config.Aimlock.Target then
+		local targetPlayer = Config.Aimlock.Target
+		local targetChar = targetPlayer.Character
+		local humanoid = targetChar and targetChar:FindFirstChildOfClass("Humanoid")
+		local targetPart = targetChar and (
+			Config.Aimlock.AimPart == "Head" and targetChar:FindFirstChild("Head") or
+			Config.Aimlock.AimPart == "Torso" and (targetChar:FindFirstChild("Torso") or targetChar:FindFirstChild("UpperTorso")) or
+			targetChar:FindFirstChild("Head") or targetChar:FindFirstChild("HumanoidRootPart")
+		)
+
+		if not targetChar or not targetChar.Parent or not targetPart then
+			Config.Aimlock.Active = false
+			Config.Aimlock.Target = nil
+			Notify("Aimlock", targetPlayer.Name .. " se salió/desapareció", 2.5)
+		elseif not humanoid or humanoid.Health <= 0 then
+			Config.Aimlock.Active = false
+			Config.Aimlock.Target = nil
+			Notify("Aimlock", targetPlayer.Name .. " se murió", 2.5)
+		else
+			local targetCFrame = CFrame.new(Camera.CFrame.Position, targetPart.Position)
+			Camera.CFrame = Camera.CFrame:Lerp(targetCFrame, math.clamp(1 - Config.Aimlock.Smoothness, 0.05, 1))
+		end
+	end
+
+	-- 6. Triggerbot Raycast
+	if Config.Triggerbot.Enabled then
+		local target = Mouse.Target
+		if target and target.Parent then
+			local player = Players:GetPlayerFromCharacter(target.Parent) or Players:GetPlayerFromCharacter(target.Parent.Parent)
+			if player and ShouldTargetPlayer(player, Config.Triggerbot.WhitelistMode, Config.Triggerbot.TeamCheck, Config.Triggerbot.FriendCheck) then
+				if mouse1click then
+					task.wait(Config.Triggerbot.Delay / 1000)
+					mouse1click()
+					if Config.Sounds.HitSound then
+						PlayAudio(Config.Sounds.SoundList[Config.Sounds.SelectedSound])
+					end
+				end
+			end
+		end
+	end
+
+	-- 7. Actualización Periódica de Hitboxes
+	UpdateHitboxes()
+
+	-- 8. ESP Rendering (Boxes, Nombres y Tracers)
+	local activeTracerTarget = nil
+
+	-- Determinar Tracer de Aimlock o ESP
+	if Config.Aimlock.Tracers and Config.Aimlock.Active and Config.Aimlock.Target then
+		local char = Config.Aimlock.Target.Character
+		activeTracerTarget = char and (char:FindFirstChild("HumanoidRootPart") or char:FindFirstChild("Head"))
+	end
+
+	for player, drawings in pairs(activeESPDrawings) do
+		local char = player.Character
+		local root = char and char:FindFirstChild("HumanoidRootPart")
+		local hum = char and char:FindFirstChildOfClass("Humanoid")
+
+		local isFriend = IsFriend(player)
+		local isValid = char and root and hum and hum.Health > 0 and (Config.ESP.Enabled and (isFriend or ShouldTargetPlayer(player, Config.ESP.WhitelistMode, Config.ESP.TeamCheck, false)))
+
+		if isValid then
+			local pos3D = root.Position
+			local dist3D = (pos3D - Camera.CFrame.Position).Magnitude
+
+			if dist3D <= Config.ESP.MaxDistance then
+				local screenPos, onScreen = Camera:WorldToViewportPoint(pos3D)
+				if onScreen then
+					local color = isFriend and Color3.fromRGB(50, 220, 100) or Color3.fromRGB(160, 80, 240)
+					local topPos = Camera:WorldToViewportPoint(pos3D + Vector3.new(0, 3, 0))
+					local bottomPos = Camera:WorldToViewportPoint(pos3D - Vector3.new(0, 3.5, 0))
+					local boxHeight = math.abs(topPos.Y - bottomPos.Y)
+					local boxWidth = boxHeight * 0.65
+
+					-- Box ESP
+					if drawings.Box and Config.ESP.Boxes then
+						drawings.Box.Size = Vector2.new(boxWidth, boxHeight)
+						drawings.Box.Position = Vector2.new(screenPos.X - (boxWidth / 2), screenPos.Y - (boxHeight / 2))
+						drawings.Box.Color = color
+						drawings.Box.Visible = true
+					elseif drawings.Box then
+						drawings.Box.Visible = false
+					end
+
+					-- Name ESP
+					if drawings.NameText and Config.ESP.Names then
+						drawings.NameText.Text = (isFriend and "[AMIGO] " or "") .. player.Name
+						drawings.NameText.Position = Vector2.new(screenPos.X, screenPos.Y - (boxHeight / 2) - 16)
+						drawings.NameText.Color = isFriend and Color3.fromRGB(80, 255, 120) or Color3.fromRGB(200, 140, 255)
+						drawings.NameText.Visible = true
+					elseif drawings.NameText then
+						drawings.NameText.Visible = false
+					end
+
+					-- Distance ESP
+					if drawings.DistText and Config.ESP.Distance then
+						drawings.DistText.Text = math.floor(dist3D) .. " studs"
+						drawings.DistText.Position = Vector2.new(screenPos.X, screenPos.Y + (boxHeight / 2) + 2)
+						drawings.DistText.Visible = true
+					elseif drawings.DistText then
+						drawings.DistText.Visible = false
+					end
+
+					-- Tracer Target selection para ESP si no hay Aimlock tracer
+					if not activeTracerTarget and Config.ESP.Tracers then
+						activeTracerTarget = root
+					end
+				else
+					if drawings.Box then drawings.Box.Visible = false end
+					if drawings.NameText then drawings.NameText.Visible = false end
+					if drawings.DistText then drawings.DistText.Visible = false end
+				end
+			else
+				if drawings.Box then drawings.Box.Visible = false end
+				if drawings.NameText then drawings.NameText.Visible = false end
+				if drawings.DistText then drawings.DistText.Visible = false end
+			end
+		else
+			if drawings.Box then drawings.Box.Visible = false end
+			if drawings.NameText then drawings.NameText.Visible = false end
+			if drawings.DistText then drawings.DistText.Visible = false end
+		end
+	end
+
+	-- 9. Renderizado de Tracer
+	if tracerLine then
+		if activeTracerTarget then
+			local screenPos, onScreen = Camera:WorldToViewportPoint(activeTracerTarget.Position)
+			if onScreen then
+				tracerLine.From = screenCenter
+				tracerLine.To = Vector2.new(screenPos.X, screenPos.Y)
+				tracerLine.Color = Color3.fromRGB(255, 0, 0)
+				tracerLine.Visible = true
+			else
+				tracerLine.Visible = false
+			end
+		else
+			tracerLine.Visible = false
+		end
+	end
 end)
-Button.MouseLeave:Connect(function()
-    TweenService:Create(Button, TweenInfo.new(0.2), {BackgroundColor3 = Color3.fromRGB(40, 40, 40)}):Play()
+
+--------------------------------------------------------------------------------
+-- 10. UI FRAMEWORK NATIVO (Dark Luxury Style + 4 Esquinas Resize + Dragging)
+--------------------------------------------------------------------------------
+local RataHub = {}
+
+function RataHub:CreateWindow(props)
+	props = props or {}
+	local titleText = props.Title or "RATAHUB V5"
+	local subTitleText = props.SubTitle or "Premium Utility Suite"
+	local versionText = props.Version or "v5.2.0"
+
+	-- Main Window Frame
+	local mainFrame = Instance.new("Frame")
+	mainFrame.Name = "MainFrame"
+	mainFrame.Size = UDim2.new(0, 720, 0, 470)
+	mainFrame.Position = UDim2.new(0.5, -360, 0.5, -235)
+	mainFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 18)
+	mainFrame.BorderSizePixel = 0
+	mainFrame.ClipsDescendants = false
+	mainFrame.Parent = screenGui
+
+	local mainCorner = Instance.new("UICorner")
+	mainCorner.CornerRadius = UDim.new(0, 8)
+	mainCorner.Parent = mainFrame
+
+	local mainStroke = Instance.new("UIStroke")
+	mainStroke.Color = Color3.fromRGB(38, 38, 48)
+	mainStroke.Thickness = 1.2
+	mainStroke.Parent = mainFrame
+
+	-- Topbar
+	local topbar = Instance.new("Frame")
+	topbar.Name = "Topbar"
+	topbar.Size = UDim2.new(1, 0, 0, 44)
+	topbar.BackgroundColor3 = Color3.fromRGB(20, 20, 26)
+	topbar.BorderSizePixel = 0
+	topbar.Parent = mainFrame
+
+	local topCorner = Instance.new("UICorner")
+	topCorner.CornerRadius = UDim.new(0, 8)
+	topCorner.Parent = topbar
+
+	local topTitle = Instance.new("TextLabel")
+	topTitle.Text = titleText .. "  <font color='#A0A0B5'>" .. subTitleText .. "</font>"
+	topTitle.RichText = true
+	topTitle.TextColor3 = Color3.fromRGB(245, 245, 255)
+	topTitle.TextSize = 14
+	topTitle.Font = Enum.Font.GothamBold
+	topTitle.TextXAlignment = Enum.TextXAlignment.Left
+	topTitle.Position = UDim2.new(0, 16, 0, 0)
+	topTitle.Size = UDim2.new(1, -120, 1, 0)
+	topTitle.BackgroundTransparency = 1
+	topTitle.Parent = topbar
+
+	-- Controles de Ventana (Minimizar / Cerrar)
+	local closeBtn = Instance.new("TextButton")
+	closeBtn.Text = "✕"
+	closeBtn.Size = UDim2.new(0, 28, 0, 28)
+	closeBtn.Position = UDim2.new(1, -36, 0.5, -14)
+	closeBtn.BackgroundColor3 = Color3.fromRGB(35, 35, 45)
+	closeBtn.TextColor3 = Color3.fromRGB(200, 200, 215)
+	closeBtn.TextSize = 12
+	closeBtn.Font = Enum.Font.GothamBold
+	closeBtn.Parent = topbar
+
+	local closeCorner = Instance.new("UICorner")
+	closeCorner.CornerRadius = UDim.new(0, 6)
+	closeCorner.Parent = closeBtn
+
+	closeBtn.MouseButton1Click:Connect(function()
+		screenGui.Enabled = not screenGui.Enabled
+	end)
+
+	-- Sidebar (Tabs)
+	local sidebar = Instance.new("Frame")
+	sidebar.Name = "Sidebar"
+	sidebar.Size = UDim2.new(0, 160, 1, -76)
+	sidebar.Position = UDim2.new(0, 0, 0, 44)
+	sidebar.BackgroundColor3 = Color3.fromRGB(17, 17, 22)
+	sidebar.BorderSizePixel = 0
+	sidebar.Parent = mainFrame
+
+	local sidebarLayout = Instance.new("UIListLayout")
+	sidebarLayout.SortOrder = Enum.SortOrder.LayoutOrder
+	sidebarLayout.Padding = UDim.new(0, 4)
+	sidebarLayout.Parent = sidebar
+
+	local sidebarPadding = Instance.new("UIPadding")
+	sidebarPadding.PaddingLeft = UDim.new(0, 8)
+	sidebarPadding.PaddingRight = UDim.new(0, 8)
+	sidebarPadding.PaddingTop = UDim.new(0, 10)
+	sidebarPadding.Parent = sidebar
+
+	-- Container de Pestañas
+	local contentContainer = Instance.new("Frame")
+	contentContainer.Name = "ContentContainer"
+	contentContainer.Size = UDim2.new(1, -168, 1, -76)
+	contentContainer.Position = UDim2.new(0, 164, 0, 44)
+	contentContainer.BackgroundTransparency = 1
+	contentContainer.Parent = mainFrame
+
+	-- Footer con separador oficial
+	local footer = Instance.new("Frame")
+	footer.Name = "Footer"
+	footer.Size = UDim2.new(1, 0, 0, 32)
+	footer.Position = UDim2.new(0, 0, 1, -32)
+	footer.BackgroundColor3 = Color3.fromRGB(18, 18, 24)
+	footer.BorderSizePixel = 0
+	footer.Parent = mainFrame
+
+	local footerSeparator = Instance.new("Frame")
+	footerSeparator.Size = UDim2.new(1, 0, 0, 1)
+	footerSeparator.BackgroundColor3 = Color3.fromRGB(32, 32, 40)
+	footerSeparator.BorderSizePixel = 0
+	footerSeparator.Parent = footer
+
+	local footerLabel = Instance.new("TextLabel")
+	footerLabel.Text = "RATAHUB V5 • Suite Privada • " .. versionText
+	footerLabel.TextColor3 = Color3.fromRGB(130, 130, 145)
+	footerLabel.TextSize = 11
+	footerLabel.Font = Enum.Font.Gotham
+	footerLabel.Size = UDim2.new(1, -24, 1, 0)
+	footerLabel.Position = UDim2.new(0, 14, 0, 0)
+	footerLabel.TextXAlignment = Enum.TextXAlignment.Left
+	footerLabel.BackgroundTransparency = 1
+	footerLabel.Parent = footer
+
+	-- Sistema de Dragging Sin Saltos
+	local dragging = false
+	local dragStart = nil
+	local startPos = nil
+
+	topbar.InputBegan:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+			dragging = true
+			dragStart = input.Position
+			startPos = mainFrame.Position
+			input.Changed:Connect(function()
+				if input.UserInputState == Enum.UserInputState.End then
+					dragging = false
+				end
+			end)
+		end
+	end)
+
+	UserInputService.InputChanged:Connect(function(input)
+		if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+			local delta = input.Position - dragStart
+			mainFrame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+		end
+	end)
+
+	-- Sistema de Resize de 4 Esquinas Sin Deriva
+	local function CreateResizeGrip(name, anchor, pos, scaleX, scaleY)
+		local grip = Instance.new("TextButton")
+		grip.Name = name
+		grip.Size = UDim2.new(0, 10, 0, 10)
+		grip.AnchorPoint = anchor
+		grip.Position = pos
+		grip.BackgroundTransparency = 1
+		grip.Text = ""
+		grip.Parent = mainFrame
+
+		local resizing = false
+		local rStart = nil
+		local startSize = nil
+		local startFramePos = nil
+
+		grip.InputBegan:Connect(function(input)
+			if input.UserInputType == Enum.UserInputType.MouseButton1 then
+				resizing = true
+				rStart = input.Position
+				startSize = mainFrame.AbsoluteSize
+				startFramePos = mainFrame.Position
+				input.Changed:Connect(function()
+					if input.UserInputState == Enum.UserInputState.End then
+						resizing = false
+					end
+				end)
+			end
+		end)
+
+		UserInputService.InputChanged:Connect(function(input)
+			if resizing and input.UserInputType == Enum.UserInputType.MouseMovement then
+				local delta = input.Position - rStart
+				local newWidth = math.max(500, startSize.X + (delta.X * scaleX))
+				local newHeight = math.max(350, startSize.Y + (delta.Y * scaleY))
+				mainFrame.Size = UDim2.new(0, newWidth, 0, newHeight)
+			end
+		end)
+	end
+
+	CreateResizeGrip("GripBR", Vector2.new(1, 1), UDim2.new(1, 0, 1, 0), 1, 1)
+	CreateResizeGrip("GripBL", Vector2.new(0, 1), UDim2.new(0, 0, 1, 0), -1, 1)
+
+	-- Manejo de Pestañas
+	local tabs = {}
+	local activeTab = nil
+
+	function RataHub:CreateTab(tabName)
+		local tabButton = Instance.new("TextButton")
+		tabButton.Name = "Tab_" .. tabName
+		tabButton.Size = UDim2.new(1, 0, 0, 34)
+		tabButton.BackgroundColor3 = Color3.fromRGB(22, 22, 28)
+		tabButton.BackgroundTransparency = 1
+		tabButton.Text = tabName
+		tabButton.TextColor3 = Color3.fromRGB(150, 150, 165)
+		tabButton.TextSize = 12
+		tabButton.Font = Enum.Font.GothamBold
+		tabButton.Parent = sidebar
+
+		local tabCorner = Instance.new("UICorner")
+		tabCorner.CornerRadius = UDim.new(0, 6)
+		tabCorner.Parent = tabButton
+
+		local tabScroll = Instance.new("ScrollingFrame")
+		tabScroll.Name = "Scroll_" .. tabName
+		tabScroll.Size = UDim2.new(1, 0, 1, 0)
+		tabScroll.BackgroundTransparency = 1
+		tabScroll.BorderSizePixel = 0
+		tabScroll.ScrollBarThickness = 4
+		tabScroll.ScrollBarImageColor3 = Color3.fromRGB(50, 50, 68)
+		tabScroll.Visible = false
+		tabScroll.Parent = contentContainer
+
+		local scrollLayout = Instance.new("UIListLayout")
+		scrollLayout.SortOrder = Enum.SortOrder.LayoutOrder
+		scrollLayout.Padding = UDim.new(0, 6)
+		scrollLayout.Parent = tabScroll
+
+		local scrollPad = Instance.new("UIPadding")
+		scrollPad.PaddingLeft = UDim.new(0, 6)
+		scrollPad.PaddingRight = UDim.new(0, 10)
+		scrollPad.PaddingTop = UDim.new(0, 6)
+		scrollPad.PaddingBottom = UDim.new(0, 14)
+		scrollPad.Parent = tabScroll
+
+		scrollLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+			tabScroll.CanvasSize = UDim2.new(0, 0, 0, scrollLayout.AbsoluteContentSize.Y + 24)
+		end)
+
+		local function Activate()
+			for _, tab in pairs(tabs) do
+				tab.Scroll.Visible = false
+				TweenService:Create(tab.Button, TweenInfo.new(0.2), {BackgroundTransparency = 1, TextColor3 = Color3.fromRGB(150, 150, 165)}):Play()
+			end
+			tabScroll.Visible = true
+			TweenService:Create(tabButton, TweenInfo.new(0.2), {BackgroundTransparency = 0, TextColor3 = Color3.fromRGB(255, 255, 255)}):Play()
+			tabButton.BackgroundColor3 = Color3.fromRGB(32, 32, 42)
+			activeTab = tabName
+		end
+
+		tabButton.MouseButton1Click:Connect(Activate)
+		tabs[tabName] = { Button = tabButton, Scroll = tabScroll }
+
+		if not activeTab then
+			Activate()
+		end
+
+		local TabAPI = {}
+
+		-- Componente: CreateSection
+		function TabAPI:CreateSection(text)
+			local sec = Instance.new("Frame")
+			sec.Size = UDim2.new(1, 0, 0, 26)
+			sec.BackgroundTransparency = 1
+			sec.Parent = tabScroll
+
+			local label = Instance.new("TextLabel")
+			label.Text = string.upper(text)
+			label.TextColor3 = Color3.fromRGB(115, 115, 135)
+			label.TextSize = 10
+			label.Font = Enum.Font.GothamBold
+			label.TextXAlignment = Enum.TextXAlignment.Left
+			label.Size = UDim2.new(1, 0, 1, 0)
+			label.BackgroundTransparency = 1
+			label.Parent = sec
+		end
+
+		-- Componente: CreateDivider
+		function TabAPI:CreateDivider()
+			local div = Instance.new("Frame")
+			div.Size = UDim2.new(1, 0, 0, 6)
+			div.BackgroundTransparency = 1
+			div.Parent = tabScroll
+
+			local line = Instance.new("Frame")
+			line.Size = UDim2.new(1, -12, 0, 1)
+			line.Position = UDim2.new(0, 6, 0.5, 0)
+			line.BackgroundColor3 = Color3.fromRGB(30, 30, 38)
+			line.BorderSizePixel = 0
+			line.Parent = div
+		end
+
+		-- Componente: CreateLabel
+		function TabAPI:CreateLabel(text)
+			local frame = Instance.new("Frame")
+			frame.Size = UDim2.new(1, 0, 0, 32)
+			frame.BackgroundColor3 = Color3.fromRGB(20, 20, 26)
+			frame.BorderSizePixel = 0
+			frame.Parent = tabScroll
+
+			local corner = Instance.new("UICorner")
+			corner.CornerRadius = UDim.new(0, 6)
+			corner.Parent = frame
+
+			local lbl = Instance.new("TextLabel")
+			lbl.Text = text
+			lbl.TextColor3 = Color3.fromRGB(200, 200, 215)
+			lbl.TextSize = 12
+			lbl.Font = Enum.Font.Gotham
+			lbl.TextXAlignment = Enum.TextXAlignment.Left
+			lbl.Position = UDim2.new(0, 12, 0, 0)
+			lbl.Size = UDim2.new(1, -24, 1, 0)
+			lbl.BackgroundTransparency = 1
+			lbl.Parent = frame
+		end
+
+		-- Componente: CreateParagraph
+		function TabAPI:CreateParagraph(opts)
+			opts = opts or {}
+			local title = opts.Title or "Información"
+			local content = opts.Content or ""
+
+			local frame = Instance.new("Frame")
+			frame.Size = UDim2.new(1, 0, 0, 54)
+			frame.BackgroundColor3 = Color3.fromRGB(20, 20, 26)
+			frame.BorderSizePixel = 0
+			frame.Parent = tabScroll
+
+			local corner = Instance.new("UICorner")
+			corner.CornerRadius = UDim.new(0, 6)
+			corner.Parent = frame
+
+			local tLabel = Instance.new("TextLabel")
+			tLabel.Text = title
+			tLabel.TextColor3 = Color3.fromRGB(240, 240, 255)
+			tLabel.TextSize = 12
+			tLabel.Font = Enum.Font.GothamBold
+			tLabel.TextXAlignment = Enum.TextXAlignment.Left
+			tLabel.Position = UDim2.new(0, 12, 0, 8)
+			tLabel.Size = UDim2.new(1, -24, 0, 16)
+			tLabel.BackgroundTransparency = 1
+			tLabel.Parent = frame
+
+			local cLabel = Instance.new("TextLabel")
+			cLabel.Text = content
+			cLabel.TextColor3 = Color3.fromRGB(150, 150, 165)
+			cLabel.TextSize = 11
+			cLabel.Font = Enum.Font.Gotham
+			cLabel.TextXAlignment = Enum.TextXAlignment.Left
+			cLabel.Position = UDim2.new(0, 12, 0, 26)
+			cLabel.Size = UDim2.new(1, -24, 0, 22)
+			cLabel.BackgroundTransparency = 1
+			cLabel.TextWrapped = true
+			cLabel.Parent = frame
+		end
+
+		-- Componente: CreateButton
+		function TabAPI:CreateButton(opts)
+			opts = opts or {}
+			local name = opts.Name or "Button"
+			local callback = opts.Callback or function() end
+
+			local frame = Instance.new("Frame")
+			frame.Size = UDim2.new(1, 0, 0, 36)
+			frame.BackgroundColor3 = Color3.fromRGB(20, 20, 26)
+			frame.BorderSizePixel = 0
+			frame.Parent = tabScroll
+
+			local corner = Instance.new("UICorner")
+			corner.CornerRadius = UDim.new(0, 6)
+			corner.Parent = frame
+
+			local btn = Instance.new("TextButton")
+			btn.Text = name
+			btn.TextColor3 = Color3.fromRGB(240, 240, 250)
+			btn.Font = Enum.Font.GothamBold
+			btn.TextSize = 12
+			btn.Size = UDim2.new(1, -16, 1, -8)
+			btn.Position = UDim2.new(0, 8, 0, 4)
+			btn.BackgroundColor3 = Color3.fromRGB(35, 35, 46)
+			btn.Parent = frame
+
+			local btnCorner = Instance.new("UICorner")
+			btnCorner.CornerRadius = UDim.new(0, 5)
+			btnCorner.Parent = btn
+
+			btn.MouseButton1Click:Connect(function()
+				TweenService:Create(btn, TweenInfo.new(0.1), {BackgroundColor3 = Color3.fromRGB(55, 55, 75)}):Play()
+				task.delay(0.1, function()
+					TweenService:Create(btn, TweenInfo.new(0.1), {BackgroundColor3 = Color3.fromRGB(35, 35, 46)}):Play()
+				end)
+				callback()
+			end)
+		end
+
+		-- Componente: CreateToggle
+		function TabAPI:CreateToggle(opts)
+			opts = opts or {}
+			local name = opts.Name or "Toggle"
+			local current = opts.CurrentValue or false
+			local callback = opts.Callback or function() end
+
+			local frame = Instance.new("Frame")
+			frame.Size = UDim2.new(1, 0, 0, 36)
+			frame.BackgroundColor3 = Color3.fromRGB(20, 20, 26)
+			frame.BorderSizePixel = 0
+			frame.Parent = tabScroll
+
+			local corner = Instance.new("UICorner")
+			corner.CornerRadius = UDim.new(0, 6)
+			corner.Parent = frame
+
+			local label = Instance.new("TextLabel")
+			label.Text = name
+			label.TextColor3 = Color3.fromRGB(220, 220, 230)
+			label.TextSize = 12
+			label.Font = Enum.Font.Gotham
+			label.TextXAlignment = Enum.TextXAlignment.Left
+			label.Position = UDim2.new(0, 12, 0, 0)
+			label.Size = UDim2.new(1, -70, 1, 0)
+			label.BackgroundTransparency = 1
+			label.Parent = frame
+
+			local switch = Instance.new("TextButton")
+			switch.Text = ""
+			switch.Size = UDim2.new(0, 42, 0, 20)
+			switch.Position = UDim2.new(1, -54, 0.5, -10)
+			switch.BackgroundColor3 = current and Color3.fromRGB(85, 60, 200) or Color3.fromRGB(40, 40, 50)
+			switch.Parent = frame
+
+			local switchCorner = Instance.new("UICorner")
+			switchCorner.CornerRadius = UDim.new(1, 0)
+			switchCorner.Parent = switch
+
+			local circle = Instance.new("Frame")
+			circle.Size = UDim2.new(0, 16, 0, 16)
+			circle.Position = current and UDim2.new(1, -18, 0.5, -8) or UDim2.new(0, 2, 0.5, -8)
+			circle.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+			circle.Parent = switch
+
+			local circleCorner = Instance.new("UICorner")
+			circleCorner.CornerRadius = UDim.new(1, 0)
+			circleCorner.Parent = circle
+
+			local function SetState(val, silent)
+				current = val
+				local targetBg = current and Color3.fromRGB(85, 60, 200) or Color3.fromRGB(40, 40, 50)
+				local targetPos = current and UDim2.new(1, -18, 0.5, -8) or UDim2.new(0, 2, 0.5, -8)
+				TweenService:Create(switch, TweenInfo.new(0.2), {BackgroundColor3 = targetBg}):Play()
+				TweenService:Create(circle, TweenInfo.new(0.2), {Position = targetPos}):Play()
+				if not silent then
+					callback(current)
+				end
+			end
+
+			switch.MouseButton1Click:Connect(function()
+				SetState(not current)
+			end)
+
+			return { Set = SetState, Get = function() return current end }
+		end
+
+		-- Componente: CreateSlider (Con Soporte para Incremento Decimal y Entero)
+		function TabAPI:CreateSlider(opts)
+			opts = opts or {}
+			local name = opts.Name or "Slider"
+			local min = opts.Range and opts.Range[1] or 0
+			local max = opts.Range and opts.Range[2] or 100
+			local increment = opts.Increment or 1
+			local current = opts.CurrentValue or min
+			local callback = opts.Callback or function() end
+
+			local frame = Instance.new("Frame")
+			frame.Size = UDim2.new(1, 0, 0, 46)
+			frame.BackgroundColor3 = Color3.fromRGB(20, 20, 26)
+			frame.BorderSizePixel = 0
+			frame.Parent = tabScroll
+
+			local corner = Instance.new("UICorner")
+			corner.CornerRadius = UDim.new(0, 6)
+			corner.Parent = frame
+
+			local label = Instance.new("TextLabel")
+			label.Text = name
+			label.TextColor3 = Color3.fromRGB(220, 220, 230)
+			label.TextSize = 12
+			label.Font = Enum.Font.Gotham
+			label.TextXAlignment = Enum.TextXAlignment.Left
+			label.Position = UDim2.new(0, 12, 0, 6)
+			label.Size = UDim2.new(1, -80, 0, 16)
+			label.BackgroundTransparency = 1
+			label.Parent = frame
+
+			local valLabel = Instance.new("TextLabel")
+			valLabel.Text = tostring(current)
+			valLabel.TextColor3 = Color3.fromRGB(150, 150, 165)
+			valLabel.TextSize = 12
+			valLabel.Font = Enum.Font.GothamBold
+			valLabel.TextXAlignment = Enum.TextXAlignment.Right
+			valLabel.Position = UDim2.new(1, -70, 0, 6)
+			valLabel.Size = UDim2.new(0, 58, 0, 16)
+			valLabel.BackgroundTransparency = 1
+			valLabel.Parent = frame
+
+			local bar = Instance.new("Frame")
+			bar.Size = UDim2.new(1, -24, 0, 6)
+			bar.Position = UDim2.new(0, 12, 0, 30)
+			bar.BackgroundColor3 = Color3.fromRGB(35, 35, 45)
+			bar.BorderSizePixel = 0
+			bar.Parent = frame
+
+			local barCorner = Instance.new("UICorner")
+			barCorner.CornerRadius = UDim.new(1, 0)
+			barCorner.Parent = bar
+
+			local fill = Instance.new("Frame")
+			local percent = math.clamp((current - min) / (max - min), 0, 1)
+			fill.Size = UDim2.new(percent, 0, 1, 0)
+			fill.BackgroundColor3 = Color3.fromRGB(85, 60, 200)
+			fill.BorderSizePixel = 0
+			fill.Parent = bar
+
+			local fillCorner = Instance.new("UICorner")
+			fillCorner.CornerRadius = UDim.new(1, 0)
+			fillCorner.Parent = fill
+
+			local isDragging = false
+			local function UpdateSlider(input)
+				local xOffset = math.clamp(input.Position.X - bar.AbsolutePosition.X, 0, bar.AbsoluteSize.X)
+				local p = xOffset / bar.AbsoluteSize.X
+				local rawVal = min + ((max - min) * p)
+				current = math.floor((rawVal / increment) + 0.5) * increment
+				current = math.clamp(current, min, max)
+
+				local formatted = (increment < 1) and string.format("%.1f", current) or tostring(current)
+				fill.Size = UDim2.new((current - min) / (max - min), 0, 1, 0)
+				valLabel.Text = formatted
+				callback(current)
+			end
+
+			bar.InputBegan:Connect(function(input)
+				if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+					isDragging = true
+					UpdateSlider(input)
+				end
+			end)
+
+			UserInputService.InputEnded:Connect(function(input)
+				if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+					isDragging = false
+				end
+			end)
+
+			UserInputService.InputChanged:Connect(function(input)
+				if isDragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+					UpdateSlider(input)
+				end
+			end)
+
+			return {
+				Set = function(v)
+					current = math.clamp(v, min, max)
+					local formatted = (increment < 1) and string.format("%.1f", current) or tostring(current)
+					fill.Size = UDim2.new((current - min) / (max - min), 0, 1, 0)
+					valLabel.Text = formatted
+					callback(current)
+				end
+			}
+		end
+
+		-- Componente: CreateKeybind
+		function TabAPI:CreateKeybind(opts)
+			opts = opts or {}
+			local name = opts.Name or "Keybind"
+			local current = opts.CurrentKeybind or Enum.KeyCode.E
+			local callback = opts.Callback or function() end
+
+			local frame = Instance.new("Frame")
+			frame.Size = UDim2.new(1, 0, 0, 36)
+			frame.BackgroundColor3 = Color3.fromRGB(20, 20, 26)
+			frame.BorderSizePixel = 0
+			frame.Parent = tabScroll
+
+			local corner = Instance.new("UICorner")
+			corner.CornerRadius = UDim.new(0, 6)
+			corner.Parent = frame
+
+			local label = Instance.new("TextLabel")
+			label.Text = name
+			label.TextColor3 = Color3.fromRGB(220, 220, 230)
+			label.TextSize = 12
+			label.Font = Enum.Font.Gotham
+			label.TextXAlignment = Enum.TextXAlignment.Left
+			label.Position = UDim2.new(0, 12, 0, 0)
+			label.Size = UDim2.new(1, -90, 1, 0)
+			label.BackgroundTransparency = 1
+			label.Parent = frame
+
+			local btn = Instance.new("TextButton")
+			btn.Text = current.Name
+			btn.TextColor3 = Color3.fromRGB(200, 200, 215)
+			btn.TextSize = 11
+			btn.Font = Enum.Font.GothamBold
+			btn.Size = UDim2.new(0, 68, 0, 24)
+			btn.Position = UDim2.new(1, -78, 0.5, -12)
+			btn.BackgroundColor3 = Color3.fromRGB(30, 30, 38)
+			btn.Parent = frame
+
+			local btnCorner = Instance.new("UICorner")
+			btnCorner.CornerRadius = UDim.new(0, 4)
+			btnCorner.Parent = btn
+
+			local listening = false
+			btn.MouseButton1Click:Connect(function()
+				listening = true
+				btn.Text = "..."
+				btn.TextColor3 = Color3.fromRGB(255, 200, 80)
+			end)
+
+			UserInputService.InputBegan:Connect(function(input, gpe)
+				if listening and input.UserInputType == Enum.UserInputType.Keyboard then
+					current = input.KeyCode
+					btn.Text = current.Name
+					btn.TextColor3 = Color3.fromRGB(200, 200, 215)
+					listening = false
+					callback(current)
+				end
+			end)
+
+			return { Set = function(k) current = k btn.Text = k.Name callback(k) end }
+		end
+
+		-- Componente: CreateDropdown (Floating Overlay Portal, MultiSelect y Single-Select)
+		function TabAPI:CreateDropdown(opts)
+			opts = opts or {}
+			local name = opts.Name or "Dropdown"
+			local options = opts.Options or {}
+			local isMulti = opts.MultiSelect or false
+			local currentSelection = opts.CurrentOption or (isMulti and {} or options[1])
+			local callback = opts.Callback or function() end
+
+			local frame = Instance.new("Frame")
+			frame.Size = UDim2.new(1, 0, 0, 36)
+			frame.BackgroundColor3 = Color3.fromRGB(20, 20, 26)
+			frame.BorderSizePixel = 0
+			frame.Parent = tabScroll
+
+			local corner = Instance.new("UICorner")
+			corner.CornerRadius = UDim.new(0, 6)
+			corner.Parent = frame
+
+			local label = Instance.new("TextLabel")
+			label.Text = name
+			label.TextColor3 = Color3.fromRGB(220, 220, 230)
+			label.TextSize = 12
+			label.Font = Enum.Font.Gotham
+			label.TextXAlignment = Enum.TextXAlignment.Left
+			label.Position = UDim2.new(0, 12, 0, 0)
+			label.Size = UDim2.new(0.5, -12, 1, 0)
+			label.BackgroundTransparency = 1
+			label.Parent = frame
+
+			local trigger = Instance.new("TextButton")
+			trigger.Size = UDim2.new(0.5, -12, 0, 24)
+			trigger.Position = UDim2.new(0.5, 0, 0.5, -12)
+			trigger.BackgroundColor3 = Color3.fromRGB(30, 30, 40)
+			trigger.Font = Enum.Font.Gotham
+			trigger.TextSize = 11
+			trigger.TextColor3 = Color3.fromRGB(200, 200, 215)
+			trigger.Parent = frame
+
+			local triggerCorner = Instance.new("UICorner")
+			triggerCorner.CornerRadius = UDim.new(0, 4)
+			triggerCorner.Parent = trigger
+
+			local function UpdateTriggerText()
+				if isMulti then
+					local count = 0
+					for _ in pairs(currentSelection) do count = count + 1 end
+					trigger.Text = count == 0 and "Ninguno" or (count .. " Seleccionado(s)")
+				else
+					trigger.Text = tostring(currentSelection)
+				end
+			end
+			UpdateTriggerText()
+
+			-- Menú flotante Overlay
+			local menuFrame = Instance.new("Frame")
+			menuFrame.Size = UDim2.new(0, 190, 0, 140)
+			menuFrame.BackgroundColor3 = Color3.fromRGB(22, 22, 28)
+			menuFrame.BorderSizePixel = 0
+			menuFrame.Visible = false
+			menuFrame.ZIndex = 200
+			menuFrame.Parent = overlayGui
+
+			local menuCorner = Instance.new("UICorner")
+			menuCorner.CornerRadius = UDim.new(0, 6)
+			menuCorner.Parent = menuFrame
+
+			local menuStroke = Instance.new("UIStroke")
+			menuStroke.Color = Color3.fromRGB(48, 48, 62)
+			menuStroke.Thickness = 1
+			menuStroke.Parent = menuFrame
+
+			local menuScroll = Instance.new("ScrollingFrame")
+			menuScroll.Size = UDim2.new(1, 0, 1, 0)
+			menuScroll.BackgroundTransparency = 1
+			menuScroll.ScrollBarThickness = 2
+			menuScroll.ScrollBarImageColor3 = Color3.fromRGB(70, 70, 90)
+			menuScroll.Parent = menuFrame
+
+			local menuLayout = Instance.new("UIListLayout")
+			menuLayout.SortOrder = Enum.SortOrder.LayoutOrder
+			menuLayout.Padding = UDim.new(0, 2)
+			menuLayout.Parent = menuScroll
+
+			local function RebuildOptions()
+				for _, child in ipairs(menuScroll:GetChildren()) do
+					if child:IsA("TextButton") then child:Destroy() end
+				end
+
+				for _, optName in ipairs(options) do
+					local optBtn = Instance.new("TextButton")
+					optBtn.Size = UDim2.new(1, -4, 0, 24)
+					optBtn.BackgroundColor3 = Color3.fromRGB(28, 28, 36)
+					optBtn.Text = optName
+					optBtn.Font = Enum.Font.Gotham
+					optBtn.TextSize = 11
+
+					if isMulti then
+						optBtn.TextColor3 = currentSelection[optName] and Color3.fromRGB(140, 100, 255) or Color3.fromRGB(180, 180, 195)
+					else
+						optBtn.TextColor3 = (currentSelection == optName) and Color3.fromRGB(140, 100, 255) or Color3.fromRGB(180, 180, 195)
+					end
+					optBtn.Parent = menuScroll
+
+					local optCorner = Instance.new("UICorner")
+					optCorner.CornerRadius = UDim.new(0, 4)
+					optCorner.Parent = optBtn
+
+					optBtn.MouseButton1Click:Connect(function()
+						if isMulti then
+							if currentSelection[optName] then
+								currentSelection[optName] = nil
+							else
+								currentSelection[optName] = true
+							end
+							UpdateTriggerText()
+							RebuildOptions()
+							callback(currentSelection)
+						else
+							currentSelection = optName
+							UpdateTriggerText()
+							menuFrame.Visible = false
+							callback(currentSelection)
+						end
+					end)
+				end
+				menuScroll.CanvasSize = UDim2.new(0, 0, 0, #options * 26)
+			end
+
+			trigger.MouseButton1Click:Connect(function()
+				menuFrame.Visible = not menuFrame.Visible
+				if menuFrame.Visible then
+					local absPos = trigger.AbsolutePosition
+					menuFrame.Position = UDim2.new(0, absPos.X, 0, absPos.Y + trigger.AbsoluteSize.Y + 4)
+					RebuildOptions()
+				end
+			end)
+
+			return {
+				Set = function(val)
+					currentSelection = val
+					UpdateTriggerText()
+					RebuildOptions()
+					callback(currentSelection)
+				end,
+				Refresh = function(newOpts)
+					options = newOpts
+					RebuildOptions()
+				end
+			}
+		end
+
+		return TabAPI
+	end
+
+	return RataHub
+end
+
+--------------------------------------------------------------------------------
+-- 11. INICIALIZACIÓN DE VENTANA Y TABS DE RATAHUB V5
+--------------------------------------------------------------------------------
+local Window = RataHub:CreateWindow({
+	Title = "RATAHUB",
+	SubTitle = "V5 Suite",
+	Version = "v5.2.0"
+})
+
+local function GetPlayerList()
+	local list = {}
+	for _, p in ipairs(Players:GetPlayers()) do
+		if p ~= LocalPlayer then
+			table.insert(list, p.Name)
+		end
+	end
+	return list
+end
+
+--------------------------------------------------------------------------------
+-- TAB 1: MAIN (Movimiento, Físicas, Hitbox y Utilidades)
+--------------------------------------------------------------------------------
+local MainTab = Window:CreateTab("Main")
+
+MainTab:CreateSection("Movimiento y Físicas")
+
+MainTab:CreateSlider({
+	Name = "Velocidad (WalkSpeed)",
+	Range = {16, 250},
+	Increment = 1,
+	CurrentValue = 16,
+	Callback = function(val)
+		Config.Main.Movement.WalkSpeed = val
+		local char = LocalPlayer.Character
+		local hum = char and char:FindFirstChildOfClass("Humanoid")
+		if hum then hum.WalkSpeed = val end
+	end
+})
+
+MainTab:CreateKeybind({
+	Name = "Tecla de Velocidad",
+	CurrentKeybind = Enum.KeyCode.V,
+	Callback = function(key)
+		Config.Main.Movement.WalkSpeedKey = key
+	end
+})
+
+MainTab:CreateSlider({
+	Name = "Fuerza de Salto (JumpPower)",
+	Range = {50, 350},
+	Increment = 1,
+	CurrentValue = 50,
+	Callback = function(val)
+		Config.Main.Movement.JumpPower = val
+		local char = LocalPlayer.Character
+		local hum = char and char:FindFirstChildOfClass("Humanoid")
+		if hum then hum.JumpPower = val end
+	end
+})
+
+MainTab:CreateSlider({
+	Name = "Gravedad",
+	Range = {0, 196.2},
+	Increment = 0.1,
+	CurrentValue = 196.2,
+	Callback = function(val)
+		Config.Main.Movement.Gravity = val
+		Workspace.Gravity = val
+	end
+})
+
+MainTab:CreateDivider()
+
+MainTab:CreateSection("Habilidades de Movimiento (3 Estados)")
+
+MainTab:CreateToggle({
+	Name = "Habilitar Vuelo (Fly)",
+	CurrentValue = false,
+	Callback = function(enabled)
+		Config.Main.Movement.FlyEnabled = enabled
+		if not enabled then
+			StopFly()
+		end
+	end
+})
+
+MainTab:CreateKeybind({
+	Name = "Tecla de Vuelo",
+	CurrentKeybind = Enum.KeyCode.X,
+	Callback = function(key)
+		Config.Main.Movement.FlyKey = key
+	end
+})
+
+MainTab:CreateSlider({
+	Name = "Velocidad de Vuelo",
+	Range = {10, 250},
+	Increment = 1,
+	CurrentValue = 50,
+	Callback = function(val)
+		Config.Main.Movement.FlySpeed = val
+	end
+})
+
+MainTab:CreateToggle({
+	Name = "Habilitar No Clip",
+	CurrentValue = false,
+	Callback = function(enabled)
+		Config.Main.Movement.NoclipEnabled = enabled
+		if not enabled then
+			Config.Main.Movement.NoclipActive = false
+		end
+	end
+})
+
+MainTab:CreateKeybind({
+	Name = "Tecla No Clip",
+	CurrentKeybind = Enum.KeyCode.N,
+	Callback = function(key)
+		Config.Main.Movement.NoclipKey = key
+	end
+})
+
+MainTab:CreateToggle({
+	Name = "Habilitar Salto Infinito",
+	CurrentValue = false,
+	Callback = function(enabled)
+		Config.Main.Movement.InfiniteJumpEnabled = enabled
+		if not enabled then
+			Config.Main.Movement.InfiniteJumpActive = false
+		end
+	end
+})
+
+MainTab:CreateKeybind({
+	Name = "Tecla Salto Infinito",
+	CurrentKeybind = Enum.KeyCode.J,
+	Callback = function(key)
+		Config.Main.Movement.InfiniteJumpKey = key
+	end
+})
+
+MainTab:CreateDivider()
+
+MainTab:CreateSection("Player y Hitbox Expander")
+
+MainTab:CreateButton({
+	Name = "Reiniciar Personaje (Reset)",
+	Callback = function()
+		local char = LocalPlayer.Character
+		local hum = char and char:FindFirstChildOfClass("Humanoid")
+		if hum then hum.Health = 0 end
+	end
+})
+
+MainTab:CreateToggle({
+	Name = "Habilitar Hitbox Expander",
+	CurrentValue = false,
+	Callback = function(enabled)
+		Config.Main.Player.HitboxEnabled = enabled
+		if not enabled then CleanHitboxes() end
+	end
+})
+
+MainTab:CreateSlider({
+	Name = "Tamaño de Hitbox",
+	Range = {2, 35},
+	Increment = 1,
+	CurrentValue = 10,
+	Callback = function(val)
+		Config.Main.Player.HitboxSize = val
+	end
+})
+
+MainTab:CreateDropdown({
+	Name = "Parte Objetivo (Hit Part)",
+	Options = {"Head", "HumanoidRootPart", "Torso"},
+	CurrentOption = "Head",
+	Callback = function(val)
+		Config.Main.Player.HitboxPart = val
+		CleanHitboxes()
+	end
+})
+
+MainTab:CreateToggle({
+	Name = "Ignorar Amigos (Hitbox)",
+	CurrentValue = false,
+	Callback = function(val)
+		Config.Main.Player.HitboxFriendCheck = val
+	end
+})
+
+MainTab:CreateToggle({
+	Name = "Ignorar Compañeros (Hitbox)",
+	CurrentValue = false,
+	Callback = function(val)
+		Config.Main.Player.HitboxTeamCheck = val
+	end
+})
+
+local hitboxWhitelistModeDropdown = MainTab:CreateDropdown({
+	Name = "Modo de Whitelist",
+	Options = {"Disabled", "Ignore Whitelist", "Only Whitelist"},
+	CurrentOption = "Disabled",
+	Callback = function(val)
+		Config.Main.Player.HitboxWhitelistMode = val
+		SyncMatrix.Propagate("Hitbox", "WhitelistMode", val)
+	end
+})
+
+local hitboxWhitelistSelectDropdown = MainTab:CreateDropdown({
+	Name = "Seleccionar Objetivo Whitelist",
+	Options = GetPlayerList(),
+	MultiSelect = true,
+	CurrentOption = GlobalWhitelistTable,
+	Callback = function(selectionTable)
+		GlobalWhitelistTable = selectionTable
+	end
+})
+
+MainTab:CreateToggle({
+	Name = "Sincronizar con ESP",
+	CurrentValue = false,
+	Callback = function(val)
+		Config.Main.Player.HitboxSyncWithESP = val
+		if val then
+			Config.Main.Player.HitboxWhitelistMode = Config.ESP.WhitelistMode
+			hitboxWhitelistModeDropdown.Set(Config.ESP.WhitelistMode)
+		end
+	end
+})
+
+MainTab:CreateToggle({
+	Name = "Sincronizar con Aimlock",
+	CurrentValue = false,
+	Callback = function(val)
+		Config.Main.Player.HitboxSyncWithAimlock = val
+		if val then
+			Config.Main.Player.HitboxWhitelistMode = Config.Aimlock.WhitelistMode
+			hitboxWhitelistModeDropdown.Set(Config.Aimlock.WhitelistMode)
+		end
+	end
+})
+
+MainTab:CreateToggle({
+	Name = "Sincronizar con Triggerbot",
+	CurrentValue = false,
+	Callback = function(val)
+		Config.Main.Player.HitboxSyncWithTriggerbot = val
+		if val then
+			Config.Main.Player.HitboxWhitelistMode = Config.Triggerbot.WhitelistMode
+			hitboxWhitelistModeDropdown.Set(Config.Triggerbot.WhitelistMode)
+		end
+	end
+})
+
+UI_Controllers.Hitbox = {
+	SetWhitelistMode = function(mode)
+		hitboxWhitelistModeDropdown.Set(mode)
+	end
+}
+
+MainTab:CreateDivider()
+
+MainTab:CreateSection("Utilidades de Servidor")
+
+MainTab:CreateSlider({
+	Name = "Cantidad de Jugadores Objetivo",
+	Range = {1, 50},
+	Increment = 1,
+	CurrentValue = 1,
+	Callback = function(val)
+		Config.Main.Utility.TargetServerPlayerCount = val
+	end
+})
+
+MainTab:CreateButton({
+	Name = "Unirse a Servidor con esa Cantidad",
+	Callback = function()
+		JoinServerWithPlayerCount(Config.Main.Utility.TargetServerPlayerCount)
+	end
+})
+
+MainTab:CreateToggle({
+	Name = "Anti-AFK",
+	CurrentValue = false,
+	Callback = function(val)
+		Config.Main.Utility.AntiAFK = val
+		Notify("Anti-AFK", val and "Anti-AFK Habilitado." or "Anti-AFK Deshabilitado.", 2)
+	end
+})
+
+MainTab:CreateButton({
+	Name = "Rejoin Mismo Servidor",
+	Callback = function()
+		RejoinServer()
+	end
+})
+
+--------------------------------------------------------------------------------
+-- TAB 2: ESP
+--------------------------------------------------------------------------------
+local ESPTab = Window:CreateTab("ESP")
+
+ESPTab:CreateSection("Renderizado Visual")
+
+ESPTab:CreateToggle({
+	Name = "Habilitar ESP",
+	CurrentValue = false,
+	Callback = function(enabled)
+		Config.ESP.Enabled = enabled
+	end
+})
+
+ESPTab:CreateToggle({
+	Name = "Boxes ESP (Morado)",
+	CurrentValue = false,
+	Callback = function(val)
+		Config.ESP.Boxes = val
+	end
+})
+
+ESPTab:CreateToggle({
+	Name = "Nombres ESP",
+	CurrentValue = false,
+	Callback = function(val)
+		Config.ESP.Names = val
+	end
+})
+
+ESPTab:CreateToggle({
+	Name = "Distancia ESP",
+	CurrentValue = false,
+	Callback = function(val)
+		Config.ESP.Distance = val
+	end
+})
+
+local espTracerToggle = nil
+local aimlockTracerToggle = nil
+
+espTracerToggle = ESPTab:CreateToggle({
+	Name = "Tracer Rojo (ESP)",
+	CurrentValue = false,
+	Callback = function(enabled)
+		Config.ESP.Tracers = enabled
+		if enabled and aimlockTracerToggle and Config.Aimlock.Tracers then
+			Config.Aimlock.Tracers = false
+			aimlockTracerToggle.Set(false, true)
+		end
+	end
+})
+
+ESPTab:CreateSlider({
+	Name = "Distancia Máxima ESP",
+	Range = {100, 3000},
+	Increment = 50,
+	CurrentValue = 1000,
+	Callback = function(val)
+		Config.ESP.MaxDistance = val
+	end
+})
+
+ESPTab:CreateToggle({
+	Name = "Comprobar Amigos (Verde)",
+	CurrentValue = false,
+	Callback = function(val)
+		Config.ESP.FriendCheck = val
+	end
+})
+
+ESPTab:CreateToggle({
+	Name = "Comprobar Equipos (Team Check)",
+	CurrentValue = false,
+	Callback = function(val)
+		Config.ESP.TeamCheck = val
+	end
+})
+
+ESPTab:CreateDivider()
+
+ESPTab:CreateSection("Whitelist y Sincronización")
+
+local espWhitelistModeDropdown = ESPTab:CreateDropdown({
+	Name = "Modo de Whitelist",
+	Options = {"Disabled", "Ignore Whitelist", "Only Whitelist"},
+	CurrentOption = "Disabled",
+	Callback = function(val)
+		Config.ESP.WhitelistMode = val
+		SyncMatrix.Propagate("ESP", "WhitelistMode", val)
+	end
+})
+
+local espWhitelistSelectDropdown = ESPTab:CreateDropdown({
+	Name = "Seleccionar Objetivo Whitelist",
+	Options = GetPlayerList(),
+	MultiSelect = true,
+	CurrentOption = GlobalWhitelistTable,
+	Callback = function(selectionTable)
+		GlobalWhitelistTable = selectionTable
+	end
+})
+
+ESPTab:CreateToggle({
+	Name = "Sincronizar con Aimlock",
+	CurrentValue = false,
+	Callback = function(val)
+		Config.ESP.SyncWithAimlock = val
+		if val then
+			Config.ESP.WhitelistMode = Config.Aimlock.WhitelistMode
+			espWhitelistModeDropdown.Set(Config.Aimlock.WhitelistMode)
+		end
+	end
+})
+
+ESPTab:CreateToggle({
+	Name = "Sincronizar con Triggerbot",
+	CurrentValue = false,
+	Callback = function(val)
+		Config.ESP.SyncWithTriggerbot = val
+		if val then
+			Config.ESP.WhitelistMode = Config.Triggerbot.WhitelistMode
+			espWhitelistModeDropdown.Set(Config.Triggerbot.WhitelistMode)
+		end
+	end
+})
+
+ESPTab:CreateToggle({
+	Name = "Sincronizar con Hitbox",
+	CurrentValue = false,
+	Callback = function(val)
+		Config.ESP.SyncWithHitbox = val
+		if val then
+			Config.ESP.WhitelistMode = Config.Main.Player.HitboxWhitelistMode
+			espWhitelistModeDropdown.Set(Config.Main.Player.HitboxWhitelistMode)
+		end
+	end
+})
+
+UI_Controllers.ESP = {
+	SetWhitelistMode = function(mode)
+		espWhitelistModeDropdown.Set(mode)
+	end
+}
+
+--------------------------------------------------------------------------------
+-- TAB 3: AIMLOCK
+--------------------------------------------------------------------------------
+local AimlockTab = Window:CreateTab("Aimlock")
+
+AimlockTab:CreateSection("Configuración Principal")
+
+AimlockTab:CreateToggle({
+	Name = "Habilitar Aimlock (Permiso Maestro)",
+	CurrentValue = false,
+	Callback = function(enabled)
+		Config.Aimlock.Enabled = enabled
+		if not enabled then
+			Config.Aimlock.Active = false
+			Config.Aimlock.Target = nil
+		end
+	end
+})
+
+AimlockTab:CreateKeybind({
+	Name = "Tecla de Lockeo (Aimlock Key)",
+	CurrentKeybind = Enum.KeyCode.E,
+	Callback = function(key)
+		Config.Aimlock.AimlockKey = key
+	end
+})
+
+AimlockTab:CreateDropdown({
+	Name = "Parte Objetivo (Aim Part)",
+	Options = {"Head", "Torso", "Auto"},
+	CurrentOption = "Head",
+	Callback = function(val)
+		Config.Aimlock.AimPart = val
+	end
+})
+
+AimlockTab:CreateSlider({
+	Name = "Suavizado (Smoothness)",
+	Range = {1, 9},
+	Increment = 1,
+	CurrentValue = 2,
+	Callback = function(val)
+		Config.Aimlock.Smoothness = val / 10
+	end
+})
+
+AimlockTab:CreateSlider({
+	Name = "Distancia Máxima",
+	Range = {50, 2000},
+	Increment = 25,
+	CurrentValue = 500,
+	Callback = function(val)
+		Config.Aimlock.MaxDistance = val
+	end
+})
+
+AimlockTab:CreateDivider()
+
+AimlockTab:CreateSection("Filtro FOV (Screen Space)")
+
+AimlockTab:CreateToggle({
+	Name = "Usar Círculo FOV",
+	CurrentValue = false,
+	Callback = function(enabled)
+		Config.Aimlock.UseFOV = enabled
+	end
+})
+
+AimlockTab:CreateSlider({
+	Name = "Radio FOV (Píxeles)",
+	Range = {30, 400},
+	Increment = 5,
+	CurrentValue = 150,
+	Callback = function(val)
+		Config.Aimlock.FOVSize = val
+	end
+})
+
+AimlockTab:CreateDivider()
+
+AimlockTab:CreateSection("Visuales y Filtros")
+
+aimlockTracerToggle = AimlockTab:CreateToggle({
+	Name = "Tracer Rojo (Aimlock)",
+	CurrentValue = false,
+	Callback = function(enabled)
+		Config.Aimlock.Tracers = enabled
+		if enabled and espTracerToggle and Config.ESP.Tracers then
+			Config.ESP.Tracers = false
+			espTracerToggle.Set(false, true)
+		end
+	end
+})
+
+AimlockTab:CreateToggle({
+	Name = "Ignorar Amigos (Friend Check)",
+	CurrentValue = false,
+	Callback = function(val)
+		Config.Aimlock.FriendCheck = val
+	end
+})
+
+AimlockTab:CreateToggle({
+	Name = "Ignorar Compañeros (Team Check)",
+	CurrentValue = false,
+	Callback = function(val)
+		Config.Aimlock.TeamCheck = val
+	end
+})
+
+AimlockTab:CreateDivider()
+
+AimlockTab:CreateSection("Whitelist y Sincronización")
+
+local aimlockWhitelistModeDropdown = AimlockTab:CreateDropdown({
+	Name = "Modo de Whitelist",
+	Options = {"Disabled", "Ignore Whitelist", "Only Whitelist"},
+	CurrentOption = "Disabled",
+	Callback = function(val)
+		Config.Aimlock.WhitelistMode = val
+		SyncMatrix.Propagate("Aimlock", "WhitelistMode", val)
+	end
+})
+
+local aimlockWhitelistSelectDropdown = AimlockTab:CreateDropdown({
+	Name = "Seleccionar Objetivo Whitelist",
+	Options = GetPlayerList(),
+	MultiSelect = true,
+	CurrentOption = GlobalWhitelistTable,
+	Callback = function(selectionTable)
+		GlobalWhitelistTable = selectionTable
+	end
+})
+
+AimlockTab:CreateToggle({
+	Name = "Sincronizar con ESP",
+	CurrentValue = false,
+	Callback = function(val)
+		Config.Aimlock.SyncWithESP = val
+		if val then
+			Config.Aimlock.WhitelistMode = Config.ESP.WhitelistMode
+			aimlockWhitelistModeDropdown.Set(Config.ESP.WhitelistMode)
+		end
+	end
+})
+
+AimlockTab:CreateToggle({
+	Name = "Sincronizar con Triggerbot",
+	CurrentValue = false,
+	Callback = function(val)
+		Config.Aimlock.SyncWithTriggerbot = val
+		if val then
+			Config.Aimlock.WhitelistMode = Config.Triggerbot.WhitelistMode
+			aimlockWhitelistModeDropdown.Set(Config.Triggerbot.WhitelistMode)
+		end
+	end
+})
+
+AimlockTab:CreateToggle({
+	Name = "Sincronizar con Hitbox",
+	CurrentValue = false,
+	Callback = function(val)
+		Config.Aimlock.SyncWithHitbox = val
+		if val then
+			Config.Aimlock.WhitelistMode = Config.Main.Player.HitboxWhitelistMode
+			aimlockWhitelistModeDropdown.Set(Config.Main.Player.HitboxWhitelistMode)
+		end
+	end
+})
+
+UI_Controllers.Aimlock = {
+	SetWhitelistMode = function(mode)
+		aimlockWhitelistModeDropdown.Set(mode)
+	end
+}
+
+--------------------------------------------------------------------------------
+-- TAB 4: TRIGGERBOT
+--------------------------------------------------------------------------------
+local TriggerTab = Window:CreateTab("Triggerbot")
+
+TriggerTab:CreateSection("Configuración de Disparo")
+
+TriggerTab:CreateToggle({
+	Name = "Habilitar Triggerbot",
+	CurrentValue = false,
+	Callback = function(enabled)
+		Config.Triggerbot.Enabled = enabled
+	end
+})
+
+TriggerTab:CreateSlider({
+	Name = "Retardo de Disparo (ms)",
+	Range = {10, 500},
+	Increment = 5,
+	CurrentValue = 50,
+	Callback = function(val)
+		Config.Triggerbot.Delay = val
+	end
+})
+
+TriggerTab:CreateToggle({
+	Name = "Ignorar Amigos (Friend Check)",
+	CurrentValue = false,
+	Callback = function(val)
+		Config.Triggerbot.FriendCheck = val
+	end
+})
+
+TriggerTab:CreateToggle({
+	Name = "Ignorar Compañeros (Team Check)",
+	CurrentValue = false,
+	Callback = function(val)
+		Config.Triggerbot.TeamCheck = val
+	end
+})
+
+TriggerTab:CreateDivider()
+
+TriggerTab:CreateSection("Whitelist y Sincronización")
+
+local triggerWhitelistModeDropdown = TriggerTab:CreateDropdown({
+	Name = "Modo de Whitelist",
+	Options = {"Disabled", "Ignore Whitelist", "Only Whitelist"},
+	CurrentOption = "Disabled",
+	Callback = function(val)
+		Config.Triggerbot.WhitelistMode = val
+		SyncMatrix.Propagate("Triggerbot", "WhitelistMode", val)
+	end
+})
+
+local triggerWhitelistSelectDropdown = TriggerTab:CreateDropdown({
+	Name = "Seleccionar Objetivo Whitelist",
+	Options = GetPlayerList(),
+	MultiSelect = true,
+	CurrentOption = GlobalWhitelistTable,
+	Callback = function(selectionTable)
+		GlobalWhitelistTable = selectionTable
+	end
+})
+
+TriggerTab:CreateToggle({
+	Name = "Sincronizar con ESP",
+	CurrentValue = false,
+	Callback = function(val)
+		Config.Triggerbot.SyncWithESP = val
+		if val then
+			Config.Triggerbot.WhitelistMode = Config.ESP.WhitelistMode
+			triggerWhitelistModeDropdown.Set(Config.ESP.WhitelistMode)
+		end
+	end
+})
+
+TriggerTab:CreateToggle({
+	Name = "Sincronizar con Aimlock",
+	CurrentValue = false,
+	Callback = function(val)
+		Config.Triggerbot.SyncWithAimlock = val
+		if val then
+			Config.Triggerbot.WhitelistMode = Config.Aimlock.WhitelistMode
+			triggerWhitelistModeDropdown.Set(Config.Aimlock.WhitelistMode)
+		end
+	end
+})
+
+TriggerTab:CreateToggle({
+	Name = "Sincronizar con Hitbox",
+	CurrentValue = false,
+	Callback = function(val)
+		Config.Triggerbot.SyncWithHitbox = val
+		if val then
+			Config.Triggerbot.WhitelistMode = Config.Main.Player.HitboxWhitelistMode
+			triggerWhitelistModeDropdown.Set(Config.Main.Player.HitboxWhitelistMode)
+		end
+	end
+})
+
+UI_Controllers.Triggerbot = {
+	SetWhitelistMode = function(mode)
+		triggerWhitelistModeDropdown.Set(mode)
+	end
+}
+
+--------------------------------------------------------------------------------
+-- TAB 5: EXTRAS (Cámara, Visión, Herramientas y Rendimiento)
+--------------------------------------------------------------------------------
+local ExtrasTab = Window:CreateTab("Extras")
+
+ExtrasTab:CreateSection("Cámara")
+
+ExtrasTab:CreateToggle({
+	Name = "Desbloquear Distancia Máxima",
+	CurrentValue = false,
+	Callback = function(enabled)
+		Config.Extras.Camera.UnlockMaxDistance = enabled
+		LocalPlayer.CameraMaxZoomDistance = enabled and 99999 or 128
+	end
+})
+
+ExtrasTab:CreateToggle({
+	Name = "Cambiador de FOV (FOV Changer)",
+	CurrentValue = false,
+	Callback = function(enabled)
+		Config.Extras.Camera.FOVChanger = enabled
+		if not enabled then Camera.FieldOfView = 70 end
+	end
+})
+
+ExtrasTab:CreateSlider({
+	Name = "Valor de FOV",
+	Range = {30, 120},
+	Increment = 1,
+	CurrentValue = 70,
+	Callback = function(val)
+		Config.Extras.Camera.FOVValue = val
+		if Config.Extras.Camera.FOVChanger then
+			Camera.FieldOfView = val
+		end
+	end
+})
+
+ExtrasTab:CreateToggle({
+	Name = "Freecam",
+	CurrentValue = false,
+	Callback = function(enabled)
+		Config.Extras.Camera.Freecam = enabled
+		if enabled then
+			freecamCFrame = Camera.CFrame
+		else
+			freecamCFrame = nil
+			local char = LocalPlayer.Character
+			local hum = char and char:FindFirstChildOfClass("Humanoid")
+			if hum then Camera.CameraSubject = hum end
+		end
+	end
+})
+
+ExtrasTab:CreateSlider({
+	Name = "Velocidad de Freecam",
+	Range = {1, 100},
+	Increment = 1,
+	CurrentValue = 10,
+	Callback = function(val)
+		Config.Extras.Camera.FreecamSpeed = val
+	end
+})
+
+ExtrasTab:CreateDivider()
+
+ExtrasTab:CreateSection("Visión y Rayos X")
+
+ExtrasTab:CreateToggle({
+	Name = "Modo Rayos X (X-Ray)",
+	CurrentValue = false,
+	Callback = function(enabled)
+		Config.Extras.Vision.XRay = enabled
+		for _, part in ipairs(Workspace:GetDescendants()) do
+			if part:IsA("BasePart") and not part.Parent:FindFirstChildOfClass("Humanoid") then
+				part.LocalTransparencyModifier = enabled and 0.6 or 0
+			end
+		end
+	end
+})
+
+ExtrasTab:CreateDivider()
+
+ExtrasTab:CreateSection("Herramientas (Click TP y BTools)")
+
+ExtrasTab:CreateToggle({
+	Name = "Click TP (Sin Herramientas)",
+	CurrentValue = false,
+	Callback = function(enabled)
+		Config.Extras.Tools.ClickTP = enabled
+	end
+})
+
+ExtrasTab:CreateButton({
+	Name = "Obtener BTools (Hammer)",
+	Callback = function()
+		GiveBTools()
+	end
+})
+
+ExtrasTab:CreateDivider()
+
+ExtrasTab:CreateSection("Rendimiento y Protección")
+
+ExtrasTab:CreateToggle({
+	Name = "Optimizador de FPS (FPS Boost)",
+	CurrentValue = false,
+	Callback = function(enabled)
+		Config.Extras.Performance.FPSBoost = enabled
+		if enabled then
+			Lighting.GlobalShadows = false
+			Lighting.FogEnd = 9e9
+			for _, v in ipairs(Lighting:GetChildren()) do
+				if v:IsA("PostProcessEffect") then v.Enabled = false end
+			end
+		else
+			Lighting.GlobalShadows = true
+			for _, v in ipairs(Lighting:GetChildren()) do
+				if v:IsA("PostProcessEffect") then v.Enabled = true end
+			end
+		end
+	end
+})
+
+ExtrasTab:CreateToggle({
+	Name = "Anti-Fling",
+	CurrentValue = false,
+	Callback = function(enabled)
+		Config.Extras.Performance.AntiFling = enabled
+	end
+})
+
+--------------------------------------------------------------------------------
+-- TAB 6: TROLL (Fling e Invisibilidad)
+--------------------------------------------------------------------------------
+local TrollTab = Window:CreateTab("Troll")
+
+TrollTab:CreateSection("Funciones de Troll")
+
+TrollTab:CreateToggle({
+	Name = "Habilitar Fling",
+	CurrentValue = false,
+	Callback = function(enabled)
+		Config.Troll.Fling = enabled
+		local char = LocalPlayer.Character
+		local root = char and char:FindFirstChild("HumanoidRootPart")
+		if enabled and root then
+			local bVelocity = Instance.new("BodyAngularVelocity")
+			bVelocity.Name = "FlingForce"
+			bVelocity.AngularVelocity = Vector3.new(0, 99999, 0)
+			bVelocity.MaxTorque = Vector3.new(0, 9e9, 0)
+			bVelocity.P = 9e4
+			bVelocity.Parent = root
+		elseif root and root:FindFirstChild("FlingForce") then
+			root.FlingForce:Destroy()
+		end
+	end
+})
+
+TrollTab:CreateToggle({
+	Name = "Invisibilidad (Local / Visual)",
+	CurrentValue = false,
+	Callback = function(enabled)
+		Config.Troll.Invisible = enabled
+		local char = LocalPlayer.Character
+		if char then
+			for _, part in ipairs(char:GetDescendants()) do
+				if part:IsA("BasePart") or part:IsA("Decal") then
+					part.Transparency = enabled and 1 or 0
+				end
+			end
+		end
+	end
+})
+
+--------------------------------------------------------------------------------
+-- TAB 7: SOUNDS (Sonidos y Efectos de Audio Exclusivos)
+--------------------------------------------------------------------------------
+local SoundsTab = Window:CreateTab("Sounds")
+
+SoundsTab:CreateSection("Configuración de Sonidos")
+
+SoundsTab:CreateToggle({
+	Name = "Sonido al Lockear (Lock Target)",
+	CurrentValue = true,
+	Callback = function(enabled)
+		Config.Sounds.LockSound = enabled
+	end
+})
+
+SoundsTab:CreateToggle({
+	Name = "Sonido de Impacto/Disparo (Hit Sound)",
+	CurrentValue = true,
+	Callback = function(enabled)
+		Config.Sounds.HitSound = enabled
+	end
+})
+
+local soundOptions = {}
+for name in pairs(Config.Sounds.SoundList) do
+	table.insert(soundOptions, name)
+end
+
+SoundsTab:CreateDropdown({
+	Name = "Lista de Sonidos",
+	Options = soundOptions,
+	CurrentOption = "Ping",
+	Callback = function(selected)
+		Config.Sounds.SelectedSound = selected
+	end
+})
+
+SoundsTab:CreateButton({
+	Name = "Reproducir Sonido Seleccionado",
+	Callback = function()
+		local id = Config.Sounds.SoundList[Config.Sounds.SelectedSound]
+		if id and id ~= 0 then
+			PlayAudio(id)
+			Notify("Audio", "Reproduciendo: " .. Config.Sounds.SelectedSound, 1.5)
+		end
+	end
+})
+
+--------------------------------------------------------------------------------
+-- 12. GESTIÓN DINÁMICA DE JUGADORES Y EVENTOS DE ENTORNO
+--------------------------------------------------------------------------------
+local function RefreshAllWhitelistDropdowns()
+	local names = GetPlayerList()
+	if hitboxWhitelistSelectDropdown then hitboxWhitelistSelectDropdown.Refresh(names) end
+	if espWhitelistSelectDropdown then espWhitelistSelectDropdown.Refresh(names) end
+	if aimlockWhitelistSelectDropdown then aimlockWhitelistSelectDropdown.Refresh(names) end
+	if triggerWhitelistSelectDropdown then triggerWhitelistSelectDropdown.Refresh(names) end
+end
+
+Players.PlayerAdded:Connect(function(player)
+	RefreshAllWhitelistDropdowns()
 end)
 
-TweenService:Create(Frame, TweenInfo.new(0.4, Enum.EasingStyle.Back), {Size = UDim2.new(0, 340, 0, 210)}):Play()
-TweenService:Create(blur,  TweenInfo.new(0.4), {Size = 18}):Play()
-
--- =====================
--- LOGICA CHECK KEY
--- =====================
-local checking = false
-
-Button.MouseButton1Click:Connect(function()
-    if checking then return end
-    checking = true
-
-    local key = TextBox.Text
-
-    if key == "" then
-        Button.Text = "Ingresa una key!"
-        task.wait(1.5)
-        Button.Text = "Check Key"
-        checking = false
-        return
-    end
-
-    Button.Text = "Verificando..."
-
-    local ok, response = pcall(function()
-        return game:HttpGet("https://key-sistem-9avv.onrender.com/check?key=" .. key .. "&version=" .. VERSION)
-    end)
-
-    if not ok or response == nil then
-        Button.Text = "Error de red, intenta de nuevo"
-        task.wait(2)
-        Button.Text = "Check Key"
-        checking = false
-        return
-    end
-
-    if response == "outdated" then
-        Button.Text = "Actualiza el script ❌"
-        task.wait(2)
-        Button.Text = "Check Key"
-        checking = false
-        return
-    end
-
-    if response == "expired" then
-        Button.Text = "Key expirada ❌"
-        task.wait(2)
-        Button.Text = "Check Key"
-        checking = false
-        return
-    end
-
-    if response == "invalid" then
-        Button.Text = "Incorrecto ❌"
-        task.wait(1.5)
-        Button.Text = "Check Key"
-        checking = false
-        return
-    end
-
-    if response == "valid" then
-        Button.Text = "Correcto ✔"
-        task.wait(0.8)
-
-        TweenService:Create(Frame, TweenInfo.new(0.3), {Size = UDim2.new(0, 0, 0, 0)}):Play()
-        TweenService:Create(blur,  TweenInfo.new(0.3), {Size = 0}):Play()
-        task.wait(0.35)
-        ScreenGui:Destroy()
-        blur:Destroy()
-
-        getgenv().KeySystemPassed = "RATAHUB-ACCESS-OK"
-
-        local s = game:HttpGet(SCRIPT_URL)
-        local f = loadstring(s)
-        if f then
-            f()
-        else
-            warn("[RATAHUB] Error: el script no compilo")
-        end
-    end
+Players.PlayerRemoving:Connect(function(player)
+	GlobalWhitelistTable[player.Name] = nil
+	if Config.Aimlock.Target == player then
+		Config.Aimlock.Active = false
+		Config.Aimlock.Target = nil
+		Notify("Aimlock", player.Name .. " se salió/desapareció", 2.5)
+	end
+	RefreshAllWhitelistDropdowns()
 end)
 
--- =====================
--- DRAG
--- =====================
-local dragging, dragInput, dragStart, startPos
-
-TopBar.InputBegan:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 then
-        dragging  = true
-        dragStart = input.Position
-        startPos  = Frame.Position
-        input.Changed:Connect(function()
-            if input.UserInputState == Enum.UserInputState.End then
-                dragging = false
-            end
-        end)
-    end
-end)
-
-TopBar.InputChanged:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseMovement then
-        dragInput = input
-    end
-end)
-
-UIS.InputChanged:Connect(function(input)
-    if input == dragInput and dragging then
-        local delta = input.Position - dragStart
-        Frame.Position = UDim2.new(
-            startPos.X.Scale,
-            startPos.X.Offset + delta.X,
-            startPos.Y.Scale,
-            startPos.Y.Offset + delta.Y
-        )
-    end
-end)
+Notify("RATAHUB V5", "Suite Premium cargada exitosamente.", 4)
